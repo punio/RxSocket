@@ -6,7 +6,7 @@ Socket wrapper for Rx
 ### RxTcpClient
 ```cs
 var client = new RxTcpClient();
-// Observe
+// Subscribe
 client.Error.Subscribe();
 client.Closed.Subscribe();
 client.Received.Subscribe();
@@ -20,7 +20,7 @@ try{
 ### RxTcpServer
 ```cs
 var server = new RxTcpServer();
-// Observe
+// Subscribe
 server.Error.Subscribe();
 server.Accepted.Subscribe();  // client connected
 server.Closed.Subscribe();  // client closed
