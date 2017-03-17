@@ -14,7 +14,34 @@
 			<RowDefinition/>
 			<RowDefinition/>
 		</Grid.RowDefinitions>
-		<Grid DataContext="{Binding Client}">
+		<Grid DataContext="{Binding Server}">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="*"/>
+			</Grid.RowDefinitions>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="*"/>
+			</Grid.ColumnDefinitions>
+			<TextBlock Text="Address"/>
+			<TextBox Grid.Column="1" Text="{Binding Address.Value}"/>
+			<TextBlock Grid.Column="2" Text="Port" Margin="10,0,0,0"/>
+			<TextBox Grid.Column="3" Text="{Binding Port.Value}"/>
+			<Button Grid.Column="4" Content="Listen" Command="{Binding Listen}" Margin="10,0,5,0"/>
+			<Button Grid.Column="5" Content="Close" Command="{Binding Close}" HorizontalAlignment="Left"/>
+
+			<TextBox Grid.Row="1" Grid.ColumnSpan="5" x:Name="ServerSendData" Text="00-11-22"/>
+			<Button Grid.Row="1" Grid.Column="5" HorizontalAlignment="Left" Content="Broadcast" Command="{Binding Broadcast}" CommandParameter="{Binding Text,ElementName=ServerSendData}"/>
+
+			<ListBox Grid.Row="2" Grid.ColumnSpan="6" ItemsSource="{Binding Log}"/>
+		</Grid>
+		
+		<Grid Grid.Row="1" DataContext="{Binding Client}">
 			<Grid.RowDefinitions>
 				<RowDefinition Height="Auto"/>
 				<RowDefinition Height="Auto"/>
@@ -35,9 +62,9 @@
 			<Button Grid.Column="4" Content="Connect" Command="{Binding Connect}" Margin="10,0,5,0"/>
 			<Button Grid.Column="5" Content="Close" Command="{Binding Close}" HorizontalAlignment="Left"/>
 
-			<TextBox Grid.Row="1" Grid.ColumnSpan="5" x:Name="ClientSendData" Text="00-11-22"/>
+			<TextBox Grid.Row="1" Grid.ColumnSpan="5" x:Name="ClientSendData" Text="68-65-6C-6C-6F"/>
 			<Button Grid.Row="1" Grid.Column="5" HorizontalAlignment="Left" Content="Send" Command="{Binding Send}" CommandParameter="{Binding Text,ElementName=ClientSendData}"/>
-			
+
 			<ListBox Grid.Row="2" Grid.ColumnSpan="6" ItemsSource="{Binding Log}"/>
 		</Grid>
 	</Grid>

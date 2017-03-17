@@ -1,9 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reactive.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Reactive.Bindings;
 using RxSocket;
 
@@ -26,9 +21,9 @@ namespace TestApp
 		{
 			_client = new RxTcpClient();
 
-			_client.Error.ObserveOnDispatcher().Subscribe(e => Log.Add($"Error.{e.Method} - {e.Exception?.Message}"));
-			_client.Closed.ObserveOnDispatcher().Subscribe(e => Log.Add($"Client closed.{e.Client?.RemoteEndPoint}"));
-			_client.Received.ObserveOnDispatcher().Subscribe(e => Log.Add($"Receive (from {e.From.Client.RemoteEndPoint}).\n{e.Data.ToDumpString()}"));
+			_client.Error.Subscribe(e => Log.AddOnScheduler($"Error.{e.Method} - {e.Exception?.Message}"));
+			_client.Closed.Subscribe(e => Log.AddOnScheduler($"Client closed.{e}"));
+			_client.Received.Subscribe(e => Log.AddOnScheduler($"Receive (from {e.From.Client.RemoteEndPoint}).\n{e.Data.ToDumpString()}"));
 
 			Connect.Subscribe(_ =>
 			{

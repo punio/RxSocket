@@ -23,13 +23,13 @@ namespace RxSocket
 
 		#region Observable
 		public IObservable<ErrorData> Error { get; }
-		public IObservable<RxTcpClient> Closed { get; }
+		public IObservable<EndPoint> Closed { get; }
 		public IObservable<ReceiveData> Received { get; }
 		#endregion
 
 		#region Field
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
-		private readonly Subject<RxTcpClient> _closed = new Subject<RxTcpClient>();
+		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
 		private readonly Subject<ReceiveData> _received = new Subject<ReceiveData>();
 		#endregion
 
@@ -40,9 +40,13 @@ namespace RxSocket
 			Received = _received.AsObservable();
 		}
 
-		public void Dispose()
+		public RxTcpClient(Socket socket) : this()
 		{
+			Client = socket;
+			StartReceive();
 		}
+
+		public void Dispose() => this.Close();
 
 
 		public void Connect(string address, int port)
@@ -68,6 +72,7 @@ namespace RxSocket
 		public void Close()
 		{
 			if (Client == null) return;
+			var endPoint = Client.RemoteEndPoint;
 			try
 			{
 				Client.Shutdown(SocketShutdown.Both);
@@ -78,7 +83,7 @@ namespace RxSocket
 			{
 				_error.OnNext(new ErrorData("Close", exp));
 			}
-			_closed.OnNext(this);
+			_closed.OnNext(endPoint);
 		}
 
 		public void Send(byte[] data)
@@ -93,7 +98,7 @@ namespace RxSocket
 			}
 		}
 
-		private void SetKeepAlive()
+		public void SetKeepAlive()
 		{
 			var inputParams = new byte[12];
 			BitConverter.GetBytes(1).CopyTo(inputParams, 0);

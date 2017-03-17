@@ -80,6 +80,7 @@
     </ApplicationDefinition>
     <Compile Include="Functions.cs" />
     <Compile Include="TcpClientTest.cs" />
+    <Compile Include="TcpServerTest.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
