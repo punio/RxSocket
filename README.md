@@ -1,6 +1,11 @@
 # RxSocket
 Socket wrapper for Rx
 
+## Install
+```
+PM> Install-Package Punio.RxSocket 
+```
+
 ## Usage
 
 ### RxTcpClient
