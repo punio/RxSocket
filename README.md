@@ -32,6 +32,21 @@ try{
 }catch(Exception){}
 ```
 
+### RxUdpListener
+```cs
+var listener = new RxUdpListener();
+// Subscribe
+listener.Received.Subscribe();
+
+// Listen
+try{
+  listener.Listen(10000); // UNICAST
+  // or 
+  // listener.Listen("224.0.0.1",10000);  // MULTICAST
+}catch(Exception){}
+```
+
+
 ## Licence
 [MIT](https://github.com/tcnksm/tool/blob/master/LICENCE)
 
