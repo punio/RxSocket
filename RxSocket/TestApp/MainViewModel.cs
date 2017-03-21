@@ -10,5 +10,6 @@ namespace TestApp
 	{
 		public TcpServerTest Server { get; } = new TcpServerTest();
 		public TcpClientTest Client { get; } = new TcpClientTest();
+		public UdpListenerTest UdpListener { get; } = new UdpListenerTest();
 	}
 }

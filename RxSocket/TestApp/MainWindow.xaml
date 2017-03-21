@@ -13,6 +13,7 @@
 		<Grid.RowDefinitions>
 			<RowDefinition/>
 			<RowDefinition/>
+			<RowDefinition/>
 		</Grid.RowDefinitions>
 		<Grid DataContext="{Binding Server}">
 			<Grid.RowDefinitions>
@@ -66,6 +67,29 @@
 			<Button Grid.Row="1" Grid.Column="5" HorizontalAlignment="Left" Content="Send" Command="{Binding Send}" CommandParameter="{Binding Text,ElementName=ClientSendData}"/>
 
 			<ListBox Grid.Row="2" Grid.ColumnSpan="6" ItemsSource="{Binding Log}"/>
+		</Grid>
+		
+		<Grid Grid.Row="2" DataContext="{Binding UdpListener}">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="*"/>
+			</Grid.RowDefinitions>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="*"/>
+			</Grid.ColumnDefinitions>
+			<CheckBox Content="Multicast" IsChecked="{Binding Multicast.Value}"/>
+			<TextBox Grid.Column="1" Text="{Binding Address.Value}" IsEnabled="{Binding Multicast.Value}"/>
+			<TextBlock Grid.Column="2" Text="Port" Margin="10,0,0,0"/>
+			<TextBox Grid.Column="3" Text="{Binding Port.Value}"/>
+			<Button Grid.Column="4" Content="Listen" Command="{Binding Listen}" Margin="10,0,5,0"/>
+			<Button Grid.Column="5" Content="Close" Command="{Binding Close}" HorizontalAlignment="Left"/>
+
+			<ListBox Grid.Row="1" Grid.ColumnSpan="6" ItemsSource="{Binding Log}"/>
 		</Grid>
 	</Grid>
 </Window>

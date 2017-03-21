@@ -29,14 +29,14 @@ namespace RxSocket
 		public IObservable<ErrorData> Error { get; }
 		public IObservable<RxTcpClient> Accepted { get; }
 		public IObservable<EndPoint> Closed { get; }
-		public IObservable<ReceiveData> Received { get; }
+		public IObservable<TcpData> Received { get; }
 		#endregion
 
 		#region Field
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
 		private readonly Subject<RxTcpClient> _accepted = new Subject<RxTcpClient>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
-		private readonly Subject<ReceiveData> _received = new Subject<ReceiveData>();
+		private readonly Subject<TcpData> _received = new Subject<TcpData>();
 		private readonly ConcurrentDictionary<string, ConnectedClient> _clients = new ConcurrentDictionary<string, ConnectedClient>();
 		#endregion
 

@@ -24,13 +24,13 @@ namespace RxSocket
 		#region Observable
 		public IObservable<ErrorData> Error { get; }
 		public IObservable<EndPoint> Closed { get; }
-		public IObservable<ReceiveData> Received { get; }
+		public IObservable<TcpData> Received { get; }
 		#endregion
 
 		#region Field
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
-		private readonly Subject<ReceiveData> _received = new Subject<ReceiveData>();
+		private readonly Subject<TcpData> _received = new Subject<TcpData>();
 		#endregion
 
 		public RxTcpClient()
@@ -134,7 +134,7 @@ namespace RxSocket
 			var buffer = (byte[])result.AsyncState;
 			var data = new byte[length];
 			Array.Copy(buffer, data, data.Length);
-			this._received.OnNext(new ReceiveData(this, data));
+			this._received.OnNext(new TcpData(this, data));
 			StartReceive();
 		}
 	}

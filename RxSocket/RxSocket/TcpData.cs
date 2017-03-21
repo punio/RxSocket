@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 
 namespace RxSocket
 {
-	public class ReceiveData : EventArgs
+	public class TcpData
 	{
 		public RxTcpClient From { get; }
 		public byte[] Data { get; }
 
-		public ReceiveData(RxTcpClient client, byte[] data)
+		public TcpData(RxTcpClient client, byte[] data)
 		{
 			From = client;
 			Data = data;
