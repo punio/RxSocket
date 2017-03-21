@@ -48,7 +48,7 @@ try{
 
 
 ## Licence
-[MIT](https://github.com/tcnksm/tool/blob/master/LICENCE)
+[MIT](https://github.com/punio/RxSocket/blob/master/LICENSE)
 
 
 ## Author
