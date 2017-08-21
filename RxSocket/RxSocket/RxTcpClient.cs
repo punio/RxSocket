@@ -14,9 +14,9 @@ namespace RxSocket
 	{
 		#region Property
 		public Socket Client { get; private set; }
-	    public bool IsConnect { get; private set; }
+		public bool IsConnect { get; private set; }
 
-	    public bool EnableKeepAlive { get; set; } = true;   // Default Enable keep alive.
+		public bool EnableKeepAlive { get; set; } = true;   // Default Enable keep alive.
 		public int KeepAliveTime { get; set; } = 30 * 60 * 1000;    // Default 30min
 		public int KeepAliveInterval { get; set; } = 30000; // Default 30sec.
 		public int BufferSize { get; set; } = 1024; // Default 1k.
@@ -44,8 +44,8 @@ namespace RxSocket
 		public RxTcpClient(Socket socket) : this()
 		{
 			Client = socket;
-            IsConnect = true;
-            StartReceive();
+			IsConnect = true;
+			StartReceive();
 		}
 
 		public void Dispose() => this.Close();
@@ -69,12 +69,12 @@ namespace RxSocket
 
 			Client.Connect(endPoint);
 			StartReceive();
-		    IsConnect = true;
+			IsConnect = true;
 		}
 
-        public void Close()
+		public void Close()
 		{
-		    IsConnect = false;
+			IsConnect = false;
 			if (Client == null) return;
 			var endPoint = Client.RemoteEndPoint;
 			try
@@ -90,12 +90,12 @@ namespace RxSocket
 			_closed.OnNext(endPoint);
 		}
 
-        /// <summary>
-        /// Send data
-        /// </summary>
-        /// <param name="data"></param>
-        /// <returns>The number of bytes sent to the Socket.
-        /// If an error occured return -1.</returns>
+		/// <summary>
+		/// Send data
+		/// </summary>
+		/// <param name="data"></param>
+		/// <returns>The number of bytes sent to the Socket.
+		/// If an error occured return -1.</returns>
 		public int Send(byte[] data)
 		{
 			try
@@ -105,7 +105,7 @@ namespace RxSocket
 			catch (Exception exp)
 			{
 				_error.OnNext(new ErrorData("Send", exp));
-                return -1;
+				return -1;
 			}
 		}
 
@@ -134,7 +134,16 @@ namespace RxSocket
 		private void RecieveCallback(IAsyncResult result)
 		{
 			if (Client == null) return;
-			var length = Client.EndReceive(result);
+
+			var length = 0;
+			try
+			{
+				length = Client.EndReceive(result);
+			}
+			catch (Exception exp)
+			{
+				_error.OnNext(new ErrorData("EndReceive", exp));
+			}
 
 			if (length <= 0)    // Socket Closed
 			{
