@@ -45,7 +45,11 @@ namespace RxSocket
 			Client.EnableBroadcast = enableBroadcast;
 			Client.ExclusiveAddressUse = exclusiveAddressUse;
 			Client.Client.Bind(new IPEndPoint(IPAddress.Any, port));
-			_disposable.Add(Client.ReceiveAsync().ToObservable().Subscribe(r => _received.OnNext(new UdpData(r.RemoteEndPoint, r.Buffer))));
+			_disposable.Add(
+				Observable.Defer(()=>Client.ReceiveAsync().ToObservable())
+					.Repeat()
+					.Subscribe(r => _received.OnNext(new UdpData(r.RemoteEndPoint, r.Buffer)))
+				);
 
 			IsMulticast = false;
 		}
