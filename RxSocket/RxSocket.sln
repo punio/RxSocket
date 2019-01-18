@@ -3,9 +3,18 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26228.9
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RxSocket", "RxSocket\RxSocket.csproj", "{85521718-5641-40D2-ACAB-86653040A8EE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RxSocket NET46", "RxSocket NET46\RxSocket NET46.csproj", "{85521718-5641-40D2-ACAB-86653040A8EE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApp", "TestApp\TestApp.csproj", "{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RxSocket Core22", "RxSocket Core22\RxSocket Core22.csproj", "{F164011E-0253-4AA9-96BE-EAE565FF1A7B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApp NET46", "TestApp NET46\TestApp NET46.csproj", "{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestApp Core22", "TestApp Core22\TestApp Core22.csproj", "{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F293C5A4-07AD-437D-827B-753594B6D3E4}"
+	ProjectSection(SolutionItems) = preProject
+		RxSocket.nuspec = RxSocket.nuspec
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,12 +26,23 @@ Global
 		{85521718-5641-40D2-ACAB-86653040A8EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{85521718-5641-40D2-ACAB-86653040A8EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{85521718-5641-40D2-ACAB-86653040A8EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {854A9E33-8685-46AA-89D2-08B2D2600324}
 	EndGlobalSection
 EndGlobal

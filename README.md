@@ -19,7 +19,7 @@ client.Received.Subscribe();
 // Connect
 try{
   client.Connect("127.0.0.1",10000);
-}catch(Excepction){}
+}catch(Exception){}
 ```
 
 ### RxTcpServer
