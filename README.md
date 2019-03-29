@@ -1,4 +1,5 @@
-# RxSocket
+# RxSocket ![NuGet](https://img.shields.io/nuget/v/Punio.RxSocket.svg)](https://www.nuget.org/packages/RxSocket/) ![License: MIT](http://img.shields.io/badge/license-MIT-blue.svg?style=flat)](https://github.com/punio/RxSocket/blob/master/LICENSE)
+
 Socket wrapper for Rx
 
 ## Install
@@ -51,9 +52,6 @@ try{
 }catch(Exception){}
 ```
 
-
-## Licence
-[MIT](https://github.com/punio/RxSocket/blob/master/LICENSE)
 
 
 ## Author
