@@ -34,6 +34,15 @@ namespace TestApp
 			// Connect
 			try
 			{
+				client.Connect("127.0.0.1", 12344);
+				Console.WriteLine("Connect 127.0.0.1:12344");
+			}
+			catch (Exception e)
+			{
+				Console.WriteLine(e.Message);
+			}
+			try
+			{
 				client.Connect("127.0.0.1", 12345);
 				Console.WriteLine("Connect 127.0.0.1:12345");
 			}

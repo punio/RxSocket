@@ -74,12 +74,16 @@ namespace RxSocket
 
 		public void Close()
 		{
-			IsConnect = false;
-			if (Client == null) return;
+			if (Client == null)
+			{
+				IsConnect = false;
+				return;
+			}
+
 			var endPoint = Client.RemoteEndPoint;
 			try
 			{
-				Client.Shutdown(SocketShutdown.Both);
+				if (IsConnect) Client.Shutdown(SocketShutdown.Both);
 				Client.Close();
 				Client = null;
 			}
@@ -87,7 +91,8 @@ namespace RxSocket
 			{
 				_error.OnNext(new ErrorData("Close", exp));
 			}
-			_closed.OnNext(endPoint);
+			if (IsConnect) _closed.OnNext(endPoint);
+			IsConnect = false;
 		}
 
 		/// <summary>
