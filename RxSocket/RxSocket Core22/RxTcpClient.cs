@@ -32,6 +32,7 @@ namespace RxSocket
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
 		private readonly Subject<TcpData> _received = new Subject<TcpData>();
+		private bool _closing;
 		#endregion
 
 		public RxTcpClient()
@@ -74,12 +75,15 @@ namespace RxSocket
 
 		public void Close()
 		{
+			if (_closing) return;
+
 			if (Client == null)
 			{
 				IsConnect = false;
 				return;
 			}
 
+			_closing = true;
 			var endPoint = Client.RemoteEndPoint;
 			try
 			{
@@ -93,6 +97,7 @@ namespace RxSocket
 			}
 			if (IsConnect) _closed.OnNext(endPoint);
 			IsConnect = false;
+			_closing = false;
 		}
 
 		/// <summary>
@@ -138,7 +143,7 @@ namespace RxSocket
 
 		private void RecieveCallback(IAsyncResult result)
 		{
-			if (Client == null) return;
+			if (_closing || Client == null) return;
 
 			var length = 0;
 			try
@@ -160,6 +165,8 @@ namespace RxSocket
 			var data = new byte[length];
 			Array.Copy(buffer, data, data.Length);
 			this._received.OnNext(new TcpData(this, data));
+
+			if (_closing) return;
 			StartReceive();
 		}
 	}
