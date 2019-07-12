@@ -16,6 +16,9 @@ namespace RxSocket
 		public Socket Client { get; private set; }
 		public bool IsConnect { get; private set; }
 
+		public EndPoint LocalEndPoint { get; private set; }
+		public EndPoint RemoteEndPoint { get; private set; }
+
 		public bool EnableKeepAlive { get; set; } = true;   // Default Enable keep alive.
 		public int KeepAliveTime { get; set; } = 30 * 60 * 1000;    // Default 30min
 		public int KeepAliveInterval { get; set; } = 30000; // Default 30sec.
@@ -46,6 +49,8 @@ namespace RxSocket
 		{
 			Client = socket;
 			IsConnect = true;
+			LocalEndPoint = Client.LocalEndPoint;
+			RemoteEndPoint = Client.RemoteEndPoint;
 			StartReceive();
 		}
 
@@ -69,6 +74,8 @@ namespace RxSocket
 			if (EnableKeepAlive) SetKeepAlive();
 
 			Client.Connect(endPoint);
+			LocalEndPoint = Client.LocalEndPoint;
+			RemoteEndPoint = Client.RemoteEndPoint;
 			StartReceive();
 			IsConnect = true;
 		}
@@ -164,7 +171,7 @@ namespace RxSocket
 			var buffer = (byte[])result.AsyncState;
 			var data = new byte[length];
 			Array.Copy(buffer, data, data.Length);
-			this._received.OnNext(new TcpData(this, data));
+			this._received.OnNext(new TcpData(this, data, LocalEndPoint, RemoteEndPoint));
 
 			if (_closing) return;
 			StartReceive();

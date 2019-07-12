@@ -10,10 +10,10 @@ namespace TestApp
 		static void Main(string[] args)
 		{
 			var server = new RxTcpServer();
-			server.Error.Subscribe(e => Console.WriteLine($"[Server] error.({e.Method}) {e.Exception.Message}"));
-			server.Accepted.Subscribe(c => Console.WriteLine($"[Server] Accept ({c.Client.RemoteEndPoint})"));
-			server.Closed.Subscribe(e => Console.WriteLine($"[Server] Closed ({e})"));
-			server.Received.Subscribe(t => Console.WriteLine($"[Server] Received {t.Data.Length} bytes."));
+			server.Error.Subscribe(e => Warning($"[Server] error.({e.Method}) {e.Exception.Message}"));
+			server.Accepted.Subscribe(c => Information($"[Server] Accept ({c.Client.RemoteEndPoint})"));
+			server.Closed.Subscribe(e => Information($"[Server] Closed ({e})"));
+			server.Received.Subscribe(t => Receive($"[Server] Received from {t.RemoteEndPoint} {t.Data.Length} bytes."));
 			// Listen
 			try
 			{
@@ -27,9 +27,9 @@ namespace TestApp
 
 			var client = new RxTcpClient();
 			// Subscribe
-			client.Error.Subscribe(e => Console.WriteLine($"[Client] error.({e.Method}) {e.Exception.Message}"));
-			client.Closed.Subscribe(e => Console.WriteLine($"[Client] Closed ({e})"));
-			client.Received.Subscribe(t => Console.WriteLine($"[Client] Received {t.Data.Length} bytes."));
+			client.Error.Subscribe(e => Warning($"[Client] error.({e.Method}) {e.Exception.Message}"));
+			client.Closed.Subscribe(e => Information($"[Client] Closed ({e})"));
+			client.Received.Subscribe(t => Receive($"[Client] Received {t.RemoteEndPoint} {t.Data.Length} bytes."));
 
 			// Connect
 			try
@@ -39,7 +39,7 @@ namespace TestApp
 			}
 			catch (Exception e)
 			{
-				Console.WriteLine(e.Message);
+				Warning(e.Message);
 			}
 			try
 			{
@@ -48,7 +48,7 @@ namespace TestApp
 			}
 			catch (Exception e)
 			{
-				Console.WriteLine(e.Message);
+				Warning(e.Message);
 			}
 
 			Console.Write(">");
@@ -56,6 +56,13 @@ namespace TestApp
 			while (!string.IsNullOrEmpty(line))
 			{
 				client.Send(Encoding.UTF8.GetBytes(line));
+
+				Console.Write(">");
+				line = Console.ReadLine();
+
+				if (string.IsNullOrEmpty(line)) break;
+				server.Broadcast(Encoding.UTF8.GetBytes(line));
+
 				Console.Write(">");
 				line = Console.ReadLine();
 			}
@@ -64,6 +71,23 @@ namespace TestApp
 			server.Close();
 
 			Console.ReadKey();
+		}
+
+		static void Information(string log)
+		{
+			Console.WriteLine(log);
+		}
+		static void Warning(string log)
+		{
+			Console.ForegroundColor = ConsoleColor.Magenta;
+			Console.WriteLine(log);
+			Console.ResetColor();
+		}
+		static void Receive(string log)
+		{
+			Console.ForegroundColor = ConsoleColor.Green;
+			Console.WriteLine(log);
+			Console.ResetColor();
 		}
 	}
 }
