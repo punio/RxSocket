@@ -46,7 +46,7 @@ namespace RxSocket
 			Client.ExclusiveAddressUse = exclusiveAddressUse;
 			Client.Client.Bind(new IPEndPoint(IPAddress.Any, port));
 			_disposable.Add(
-				Observable.Defer(()=>Client.ReceiveAsync().ToObservable())
+				Observable.Defer(() => Client.ReceiveAsync().ToObservable())
 					.Repeat()
 					.Subscribe(r => _received.OnNext(new UdpData(r.RemoteEndPoint, r.Buffer)))
 				);
@@ -54,11 +54,35 @@ namespace RxSocket
 			IsMulticast = false;
 		}
 
+		/// <summary>
+		/// Wait for multicast data using the default NIC
+		/// </summary>
+		/// <param name="multicastAddress"></param>
+		/// <param name="port"></param>
+		/// <param name="enableBroadcast"></param>
+		/// <param name="exclusiveAddressUse"></param>
 		public void Listen(string multicastAddress, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
 		{
 			Listen(port, enableBroadcast, exclusiveAddressUse);
 			MulticastAddress = IPAddress.Parse(multicastAddress);
 			Client.JoinMulticastGroup(MulticastAddress);
+			IsMulticast = true;
+		}
+
+		/// <summary>
+		/// Wait for multicast data using local address NIC
+		/// </summary>
+		/// <param name="multicastAddress"></param>
+		/// <param name="localAddress"></param>
+		/// <param name="port"></param>
+		/// <param name="enableBroadcast"></param>
+		/// <param name="exclusiveAddressUse"></param>
+		public void Listen(string multicastAddress, string localAddress, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
+		{
+			Listen(port, enableBroadcast, exclusiveAddressUse);
+			MulticastAddress = IPAddress.Parse(multicastAddress);
+			var localIpAddress = IPAddress.Parse(localAddress);
+			Client.JoinMulticastGroup(MulticastAddress, localIpAddress);
 			IsMulticast = true;
 		}
 

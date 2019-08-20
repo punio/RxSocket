@@ -9,6 +9,10 @@ namespace TestApp
 	{
 		static void Main(string[] args)
 		{
+			var udp = new RxUdpListener();
+			udp.Received.Subscribe(t => Receive($"[UDP] Received from {t.From} {t.Data.Length} bytes."));
+			udp.Listen("239.192.100.200", "192.168.1.100", 5001);
+
 			var server = new RxTcpServer();
 			server.Error.Subscribe(e => Warning($"[Server] error.({e.Method}) {e.Exception.Message}"));
 			server.Accepted.Subscribe(c => Information($"[Server] Accept ({c.Client.RemoteEndPoint})"));
