@@ -4,7 +4,7 @@
     <TargetFramework>netcoreapp2.2</TargetFramework>
     <RootNamespace>RxSocket</RootNamespace>
     <AssemblyName>RxSocket</AssemblyName>
-    <Version>1.1.9</Version>
+    <Version>1.1.10</Version>
   </PropertyGroup>
 
   <ItemGroup>

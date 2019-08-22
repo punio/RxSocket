@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Text;
 using RxSocket;
 
@@ -9,9 +11,35 @@ namespace TestApp
 	{
 		static void Main(string[] args)
 		{
-			var udp = new RxUdpListener();
-			udp.Received.Subscribe(t => Receive($"[UDP] Received from {t.From} {t.Data.Length} bytes."));
-			udp.Listen("239.192.100.200", "192.168.1.100", 5001);
+			var nicInformations = NetworkInterfaceCardInformation.GetNetworkInterfaceCardInformations();
+			if (nicInformations != null)
+			{
+				// List current network informations
+				foreach (var nic in nicInformations) Console.WriteLine(nic.ToMultiLineString());
+
+				#region Multicast receive (IPv6)
+				var multicastTargetNicV6 = nicInformations.FirstOrDefault(nic => nic.SupportsMulticast && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback && nic.IsSupportIPv6);
+				if (multicastTargetNicV6 != null)
+				{
+					Console.WriteLine($"Listen multicast(IPv6) data.(NIC:{multicastTargetNicV6.IPv6Property.Index})");
+					var udpListenerV6 = new RxUdpListener();
+					udpListenerV6.Received.Subscribe(t => Receive($"[UDP] Received from {t.From} {t.Data.Length} bytes."));
+					udpListenerV6.Listen("FF02::1", multicastTargetNicV6.IPv6Property.Index, 5000);
+				}
+				#endregion
+
+				#region Multicast receive(IPv4)
+				var multicastTargetNicV4 = nicInformations.FirstOrDefault(nic => nic.SupportsMulticast && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback && nic.IsSupportIPv4 && nic.UnicastAddresses.Any(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork));
+				if (multicastTargetNicV4 != null)
+				{
+					var unicastAddress = multicastTargetNicV4.UnicastAddresses.First(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+					Console.WriteLine($"Listen multicast(IPv4) data.(NIC:{unicastAddress})");
+					var udpListenerV4 = new RxUdpListener();
+					udpListenerV4.Received.Subscribe(t => Receive($"[UDP] Received from {t.From} {t.Data.Length} bytes."));
+					udpListenerV4.Listen("239.192.100.200", unicastAddress.Address.ToString(), 5001);
+				}
+				#endregion
+			}
 
 			var server = new RxTcpServer();
 			server.Error.Subscribe(e => Warning($"[Server] error.({e.Method}) {e.Exception.Message}"));

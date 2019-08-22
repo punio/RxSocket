@@ -36,15 +36,23 @@ namespace RxSocket
 
 		public void Dispose() => this.Close();
 
-		public void Listen(int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
+		public void Listen(int port, bool enableBroadcast = true, bool exclusiveAddressUse = false, bool ipV6 = false)
 		{
 			Close();
 			_disposable = new CompositeDisposable();
 
-			Client = new UdpClient();
+			if (ipV6)
+			{
+				Client = new UdpClient(AddressFamily.InterNetworkV6);
+			}
+			else
+			{
+				Client = new UdpClient();
+			}
+
 			Client.EnableBroadcast = enableBroadcast;
 			Client.ExclusiveAddressUse = exclusiveAddressUse;
-			Client.Client.Bind(new IPEndPoint(IPAddress.Any, port));
+			Client.Client.Bind(new IPEndPoint(ipV6 ? IPAddress.IPv6Any : IPAddress.Any, port));
 			_disposable.Add(
 				Observable.Defer(() => Client.ReceiveAsync().ToObservable())
 					.Repeat()
@@ -63,8 +71,8 @@ namespace RxSocket
 		/// <param name="exclusiveAddressUse"></param>
 		public void Listen(string multicastAddress, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
 		{
-			Listen(port, enableBroadcast, exclusiveAddressUse);
 			MulticastAddress = IPAddress.Parse(multicastAddress);
+			Listen(port, enableBroadcast, exclusiveAddressUse, MulticastAddress.AddressFamily == AddressFamily.InterNetworkV6);
 			Client.JoinMulticastGroup(MulticastAddress);
 			IsMulticast = true;
 		}
@@ -79,10 +87,30 @@ namespace RxSocket
 		/// <param name="exclusiveAddressUse"></param>
 		public void Listen(string multicastAddress, string localAddress, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
 		{
-			Listen(port, enableBroadcast, exclusiveAddressUse);
 			MulticastAddress = IPAddress.Parse(multicastAddress);
+			Listen(port, enableBroadcast, exclusiveAddressUse, MulticastAddress.AddressFamily == AddressFamily.InterNetworkV6);
 			var localIpAddress = IPAddress.Parse(localAddress);
 			Client.JoinMulticastGroup(MulticastAddress, localIpAddress);
+			IsMulticast = true;
+		}
+
+		/// <summary>
+		/// Wait for multicast data using specified index of NIC
+		/// </summary>
+		/// <param name="multicastAddress"></param>
+		/// <param name="nicIndex"></param>
+		/// <param name="port"></param>
+		/// <param name="enableBroadcast"></param>
+		/// <param name="exclusiveAddressUse"></param>
+		/// <exception cref="SocketException">This method is only IPv6</exception>
+		public void Listen(string multicastAddress, int nicIndex, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
+		{
+			MulticastAddress = IPAddress.Parse(multicastAddress);
+			if (MulticastAddress.AddressFamily != AddressFamily.InterNetworkV6) throw new SocketException((int)SocketError.OperationNotSupported);
+
+			Listen(port, enableBroadcast, exclusiveAddressUse, true);
+
+			Client.JoinMulticastGroup(nicIndex, MulticastAddress);
 			IsMulticast = true;
 		}
 
