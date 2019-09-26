@@ -124,9 +124,9 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\RxSocket NET46\RxSocket NET46.csproj">
-      <Project>{85521718-5641-40d2-acab-86653040a8ee}</Project>
-      <Name>RxSocket NET46</Name>
+    <ProjectReference Include="..\RxSocket\RxSocket.csproj">
+      <Project>{9744014d-5066-496d-9f0b-54be5a56bb30}</Project>
+      <Name>RxSocket</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

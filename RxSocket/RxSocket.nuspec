@@ -25,10 +25,10 @@
     <tags>Socket Observable Reactive Extensions</tags>
   </metadata>
   <files>
-    <file src="RxSocket NET46\bin\Release\RxSocket.dll" target="lib\net46"/>
-    <file src="RxSocket NET46\bin\Release\RxSocket.pdb" target="lib\net46"/>
+    <file src="RxSocket\bin\Release\net46\RxSocket.dll" target="lib\net46"/>
+    <file src="RxSocket\bin\Release\net46\RxSocket.pdb" target="lib\net46"/>
 
-    <file src="RxSocket Core22\bin\Release\netcoreapp2.2\RxSocket.dll" target="lib\netcoreapp2.2"/>
-    <file src="RxSocket Core22\bin\Release\netcoreapp2.2\RxSocket.pdb" target="lib\netcoreapp2.2"/>
+    <file src="RxSocket\bin\Release\netcoreapp2.2\RxSocket.dll" target="lib\netcoreapp2.2"/>
+    <file src="RxSocket\bin\Release\netcoreapp2.2\RxSocket.pdb" target="lib\netcoreapp2.2"/>
   </files>
 </package>

@@ -1,14 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
+    <TargetFrameworks>netstandard2.0;netcoreapp2.2;net46</TargetFrameworks>
     <RootNamespace>RxSocket</RootNamespace>
     <AssemblyName>RxSocket</AssemblyName>
     <Version>1.1.10</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Reactive" Version="4.1.2" />
+    <PackageReference Include="System.Reactive" Version="4.1.6" />
   </ItemGroup>
-
 </Project>

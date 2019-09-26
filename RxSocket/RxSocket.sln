@@ -1,12 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26228.9
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29324.140
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RxSocket NET46", "RxSocket NET46\RxSocket NET46.csproj", "{85521718-5641-40D2-ACAB-86653040A8EE}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RxSocket Core22", "RxSocket Core22\RxSocket Core22.csproj", "{F164011E-0253-4AA9-96BE-EAE565FF1A7B}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApp NET46", "TestApp NET46\TestApp NET46.csproj", "{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestApp Core22", "TestApp Core22\TestApp Core22.csproj", "{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}"
@@ -16,20 +12,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		RxSocket.nuspec = RxSocket.nuspec
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RxSocket", "RxSocket\RxSocket.csproj", "{9744014D-5066-496D-9F0B-54BE5A56BB30}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{85521718-5641-40D2-ACAB-86653040A8EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{85521718-5641-40D2-ACAB-86653040A8EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{85521718-5641-40D2-ACAB-86653040A8EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{85521718-5641-40D2-ACAB-86653040A8EE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F164011E-0253-4AA9-96BE-EAE565FF1A7B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E10EC57C-3186-4C3C-9887-F6D1E3EF163E}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -38,6 +28,10 @@ Global
 		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3C99FE17-7BF8-4EBF-9592-015CC2D1FBF6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9744014D-5066-496D-9F0B-54BE5A56BB30}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9744014D-5066-496D-9F0B-54BE5A56BB30}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9744014D-5066-496D-9F0B-54BE5A56BB30}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9744014D-5066-496D-9F0B-54BE5A56BB30}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

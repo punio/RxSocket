@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RxSocket Core22\RxSocket Core22.csproj" />
+    <ProjectReference Include="..\RxSocket\RxSocket.csproj" />
   </ItemGroup>
 
 </Project>
