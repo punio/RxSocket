@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>Punio.RxSocket</id>
-    <version>1.1.10</version>
+    <version>1.1.11</version>
     <title>RxSocket</title>
     <authors>punio</authors>
     <owners>punio</owners>
@@ -14,6 +14,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Tiny socket wrapper for Reactive Extensions</description>
     <releaseNotes>
+* 1.1.11   - Add .NET Core 3.0
 * 1.1.10   - Multicast listen method was made a little richer.
 * 1.1.9    - I fixed a issue. Please look at github.
 * 1.1.8    - I fixed a little issue. Please look at github.
@@ -30,5 +31,8 @@
 
     <file src="RxSocket\bin\Release\netcoreapp2.2\RxSocket.dll" target="lib\netcoreapp2.2"/>
     <file src="RxSocket\bin\Release\netcoreapp2.2\RxSocket.pdb" target="lib\netcoreapp2.2"/>
+
+    <file src="RxSocket\bin\Release\netcoreapp3.0\RxSocket.dll" target="lib\netcoreapp3.0"/>
+    <file src="RxSocket\bin\Release\netcoreapp3.0\RxSocket.pdb" target="lib\netcoreapp3.0"/>
   </files>
 </package>

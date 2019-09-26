@@ -5,6 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+#if NETCORE3_0
+using System.Runtime.InteropServices;
+#endif
 using System.Text;
 using System.Threading.Tasks;
 
@@ -20,8 +23,20 @@ namespace RxSocket
 		public EndPoint RemoteEndPoint { get; private set; }
 
 		public bool EnableKeepAlive { get; set; } = true;   // Default Enable keep alive.
-		public int KeepAliveTime { get; set; } = 30 * 60 * 1000;    // Default 30min
-		public int KeepAliveInterval { get; set; } = 30000; // Default 30sec.
+
+		/// <summary>
+		/// The KeepAliveTime specifies the timeout, in milliseconds, with no activity until the first keep-alive packet is sent.
+		/// Default 30min
+		/// </summary>
+		public int KeepAliveTime { get; set; } = 30 * 60 * 1000;
+		/// <summary>
+		/// The KeepAliveInterval member specifies the interval, in milliseconds, between when successive keep-alive packets are sent if no acknowledgement is received
+		/// Default 30sec.
+		/// </summary>
+		public int KeepAliveInterval { get; set; } = 30000;
+#if NETCORE3_0
+		public int KeepAliveRetryCount { get; set; } = 1;   // Default 1.
+#endif
 		public int BufferSize { get; set; } = 1024; // Default 1k.
 		#endregion
 
@@ -61,8 +76,7 @@ namespace RxSocket
 		{
 			if (Client != null) Close();
 
-			IPAddress targetAddress;
-			if (!IPAddress.TryParse(address, out targetAddress))
+			if (!IPAddress.TryParse(address, out var targetAddress))
 			{
 				var hostEntry = Dns.GetHostEntry(address);
 				if ((hostEntry.AddressList?.Length ?? 0) <= 0) throw new Exception("Invalid Address");
@@ -126,6 +140,9 @@ namespace RxSocket
 			}
 		}
 
+		/// <summary>
+		/// Set KeepAlive with property values
+		/// </summary>
 		public void SetKeepAlive()
 		{
 			var inputParams = new byte[12];
@@ -133,7 +150,62 @@ namespace RxSocket
 			BitConverter.GetBytes(KeepAliveTime).CopyTo(inputParams, 4);
 			BitConverter.GetBytes(KeepAliveInterval).CopyTo(inputParams, 8);
 			Client.IOControl(IOControlCode.KeepAliveValues, inputParams, null);
+
+#if NETCORE3_0
+			SetKeepAliveRetryCount(KeepAliveRetryCount);
+#endif
 		}
+
+#if NETCORE3_0
+		// https://github.com/dotnet/corefx/pull/29963
+		public void SetKeepAlive(bool enable)
+		{
+			Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, enable);
+			EnableKeepAlive = enable;
+		}
+
+		/// <summary>
+		/// Set keep alive time(s) (tcp_keepalive.keepalivetime)
+		/// This method is valid on Windows 10 1709 or later
+		/// </summary>
+		/// <remarks>
+		/// The unit for this parameter is seconds.
+		/// </remarks>
+		/// <param name="time">keep alive time(s)</param>
+		public void SetKeepAliveTime(int time)
+		{
+			if (!RunningOnWindowsLater10v1709) return;
+			Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, time);
+			KeepAliveTime = time * 1000;
+		}
+
+		/// <summary>
+		/// Set keep alive time(s) (tcp_keepalive.keepaliveinterval)
+		/// This method is valid on Windows 10 1709 or later
+		/// </summary>
+		/// <remarks>
+		/// The unit for this parameter is seconds.
+		/// </remarks>
+		/// <param name="interval">keep alive interval(s)</param>
+		public void SetKeepAliveInterval(int interval)
+		{
+			if (!RunningOnWindowsLater10v1709) return;
+			Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, interval);
+			KeepAliveInterval = interval * 1000;
+		}
+
+		/// <summary>
+		/// Set KeepAlive Retry Count (TCP_KEEPCNT)
+		/// This method is valid on Windows 10 1703 or later
+		/// </summary>
+		/// <param name="count">keep alive retry count</param>
+		public void SetKeepAliveRetryCount(int count)
+		{
+			if (!RunningOnWindowsLater10v1703) return;
+			Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, count);
+			KeepAliveRetryCount = count;
+		}
+#endif
 
 		private void StartReceive()
 		{
@@ -176,5 +248,39 @@ namespace RxSocket
 			if (_closing) return;
 			StartReceive();
 		}
+
+#if NETCORE3_0
+		private Version GetOSVersion()
+		{
+			var osDescription = RuntimeInformation.OSDescription.Replace("Microsoft", "").Replace("Windows", "").Trim();
+			var descriptions = osDescription.Split(".");
+			if (descriptions.Length < 3) return Environment.OSVersion.Version;
+			if (!int.TryParse(descriptions[0], out var major) ||
+				!int.TryParse(descriptions[1], out var minor) ||
+				!int.TryParse(descriptions[2], out var build)) return Environment.OSVersion.Version;
+			return new Version(major, minor, build);
+		}
+
+		private bool RunningOnWindowsLater10v1703
+		{
+			get
+			{
+				if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+					return false;
+				var version = GetOSVersion();
+				return version.Major > 10 || version.Major == 10 && version.Build >= 15063;
+			}
+		}
+		private bool RunningOnWindowsLater10v1709
+		{
+			get
+			{
+				if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+					return false;
+				var version = GetOSVersion();
+				return version.Major > 10 || version.Major == 10 && version.Build >= 16299;
+			}
+		}
+#endif
 	}
 }
