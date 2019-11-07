@@ -22,6 +22,9 @@ namespace RxSocket
 		public bool EnableKeepAlive { get; set; } = true;   // Default Enable keep alive.
 		public int KeepAliveTime { get; set; } = 30 * 60 * 1000;    // Default 30min
 		public int KeepAliveInterval { get; set; } = 30000; // Default 30sec.
+#if NETCORE3_0
+		public int KeepAliveRetryCount { get; set; } = 1;   // Default 1.
+#endif
 		public int BufferSize { get; set; } = 1024; // Default 1k.
 		#endregion
 
@@ -138,6 +141,9 @@ namespace RxSocket
 					EnableKeepAlive = EnableKeepAlive,
 					KeepAliveTime = KeepAliveTime,
 					KeepAliveInterval = KeepAliveInterval,
+#if NETCORE3_0
+					KeepAliveRetryCount = KeepAliveRetryCount,
+#endif
 					BufferSize = BufferSize // これだと初回が・・・
 				};
 				if (EnableKeepAlive) rxClient.SetKeepAlive();
