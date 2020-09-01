@@ -16,6 +16,12 @@ namespace RxSocket
 	{
 		#region Property
 		public UdpClient Client { get; private set; }
+
+		/// <summary>
+		/// If this value is specified, then the listen method at Unicast binds to the specified local address.
+		/// </summary>
+		public IPAddress LocalAddress { get; set; } = IPAddress.None;
+
 		public bool IsMulticast { get; private set; }
 		public IPAddress MulticastAddress { get; private set; }
 		#endregion
@@ -52,7 +58,7 @@ namespace RxSocket
 
 			Client.EnableBroadcast = enableBroadcast;
 			Client.ExclusiveAddressUse = exclusiveAddressUse;
-			Client.Client.Bind(new IPEndPoint(ipV6 ? IPAddress.IPv6Any : IPAddress.Any, port));
+			Client.Client.Bind(new IPEndPoint(LocalAddress.Equals(IPAddress.None) ? (ipV6 ? IPAddress.IPv6Any : IPAddress.Any) : LocalAddress, port));
 			_disposable.Add(
 				Observable.Defer(() => Client.ReceiveAsync().ToObservable())
 					.Repeat()
