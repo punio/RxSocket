@@ -94,6 +94,30 @@ namespace RxSocket
 			IsConnect = true;
 		}
 
+#if !NET46
+		public async Task ConnectAsync(string address, int port)
+		{
+			if (Client != null) Close();
+
+			if (!IPAddress.TryParse(address, out var targetAddress))
+			{
+				var hostEntry = await Dns.GetHostEntryAsync(address);
+				if ((hostEntry.AddressList?.Length ?? 0) <= 0) throw new Exception("Invalid Address");
+				targetAddress = hostEntry.AddressList[0];
+			}
+
+			var endPoint = new IPEndPoint(targetAddress, port);
+			Client = new Socket(targetAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+			if (EnableKeepAlive) SetKeepAlive();
+
+			await Client.ConnectAsync(endPoint);
+			LocalEndPoint = Client.LocalEndPoint;
+			RemoteEndPoint = Client.RemoteEndPoint;
+			StartReceive();
+			IsConnect = true;
+		}
+#endif
+
 		public void Close()
 		{
 			if (_closing) return;
@@ -105,9 +129,10 @@ namespace RxSocket
 			}
 
 			_closing = true;
-			var endPoint = Client.RemoteEndPoint;
+			var endPoint = RemoteEndPoint;
 			try
 			{
+				endPoint = Client.RemoteEndPoint;
 				if (IsConnect) Client.Shutdown(SocketShutdown.Both);
 				Client.Close();
 				Client = null;

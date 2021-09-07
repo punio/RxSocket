@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Net;
+using System.Reactive.Subjects;
 using System.Text;
+using System.Threading.Tasks;
 using RxSocket;
 
 namespace TestApp_Core30
@@ -11,7 +13,10 @@ namespace TestApp_Core30
 		{
 			var server = new RxTcpServer();
 			server.Error.Subscribe(e => Warning($"[Server] error.({e.Method}) {e.Exception.Message}"));
-			server.Accepted.Subscribe(c => Information($"[Server] Accept ({c.Client.RemoteEndPoint})"));
+			server.Accepted.Subscribe(c =>
+			{
+				Information($"[Server] Accept ({c.Client.RemoteEndPoint})");
+			});
 			server.Closed.Subscribe(e => Information($"[Server] Closed ({e})"));
 			server.Received.Subscribe(t => Receive($"[Server] Received from {t.RemoteEndPoint} {t.Data.Length} bytes."));
 			// Listen
@@ -36,7 +41,7 @@ namespace TestApp_Core30
 			client.KeepAliveRetryCount = 5;
 			try
 			{
-				client.Connect("127.0.0.1", 12345);
+				client.ConnectAsync("127.0.0.1", 12345).Wait();
 				Console.WriteLine("Connect 127.0.0.1:12345");
 			}
 			catch (Exception e)
