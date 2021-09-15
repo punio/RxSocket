@@ -174,7 +174,7 @@ namespace RxSocket
 			BitConverter.GetBytes(1).CopyTo(inputParams, 0);
 			BitConverter.GetBytes(KeepAliveTime).CopyTo(inputParams, 4);
 			BitConverter.GetBytes(KeepAliveInterval).CopyTo(inputParams, 8);
-			Client.IOControl(IOControlCode.KeepAliveValues, inputParams, null);
+			Client?.IOControl(IOControlCode.KeepAliveValues, inputParams, null);
 
 #if NETCORE3_0
 			SetKeepAliveRetryCount(KeepAliveRetryCount);
@@ -227,7 +227,7 @@ namespace RxSocket
 		public void SetKeepAliveRetryCount(int count)
 		{
 			if (!RunningOnWindowsLater10v1703) return;
-			Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, count);
+			Client?.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, count);
 			KeepAliveRetryCount = count;
 		}
 #endif

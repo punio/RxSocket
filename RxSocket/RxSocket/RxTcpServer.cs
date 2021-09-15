@@ -136,30 +136,41 @@ namespace RxSocket
 
 			if (client != null)
 			{
-				var rxClient = new RxTcpClient(client)
+				try
 				{
-					EnableKeepAlive = EnableKeepAlive,
-					KeepAliveTime = KeepAliveTime,
-					KeepAliveInterval = KeepAliveInterval,
+					var rxClient = new RxTcpClient(client)
+					{
+						EnableKeepAlive = EnableKeepAlive,
+						KeepAliveTime = KeepAliveTime,
+						KeepAliveInterval = KeepAliveInterval,
 #if NETCORE3_0
-					KeepAliveRetryCount = KeepAliveRetryCount,
+						KeepAliveRetryCount = KeepAliveRetryCount,
 #endif
-					BufferSize = BufferSize // これだと初回が・・・
-				};
-				if (EnableKeepAlive) rxClient.SetKeepAlive();
+						BufferSize = BufferSize // これだと初回が・・・
+					};
+					if (EnableKeepAlive) rxClient.SetKeepAlive();
 
-				var connectedClient = new ConnectedClient { Client = rxClient };
-				if (!_clients.TryAdd(connectedClient.Key, connectedClient))
-				{
-					// ???
+					// ↑の処理中にクライアントが切断されることがある
+					if (rxClient.IsConnect)
+					{
+						var connectedClient = new ConnectedClient { Client = rxClient };
+						if (!_clients.TryAdd(connectedClient.Key, connectedClient))
+						{
+							// ???
 
+						}
+
+						Clients = new ReadOnlyCollection<RxTcpClient>(_clients.Values.Select(c => c.Client).ToList());
+						_accepted.OnNext(rxClient); // Notice
+
+						connectedClient.Disposable.Add(rxClient.Closed.Subscribe(ClientClosed));
+						connectedClient.Disposable.Add(rxClient.Received.Subscribe(_received));
+						connectedClient.Disposable.Add(rxClient.Error.Subscribe(_error));
+					}
 				}
-				Clients = new ReadOnlyCollection<RxTcpClient>(_clients.Values.Select(c => c.Client).ToList());
-				_accepted.OnNext(rxClient); // Notice
-
-				connectedClient.Disposable.Add(rxClient.Closed.Subscribe(ClientClosed));
-				connectedClient.Disposable.Add(rxClient.Received.Subscribe(_received));
-				connectedClient.Disposable.Add(rxClient.Error.Subscribe(_error));
+				catch
+				{
+				}
 			}
 
 			StartAccept();
