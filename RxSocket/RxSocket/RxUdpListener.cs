@@ -58,6 +58,7 @@ namespace RxSocket
 
 			Client.EnableBroadcast = enableBroadcast;
 			Client.ExclusiveAddressUse = exclusiveAddressUse;
+			if (!exclusiveAddressUse) Client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 			Client.Client.Bind(new IPEndPoint(LocalAddress.Equals(IPAddress.None) ? (ipV6 ? IPAddress.IPv6Any : IPAddress.Any) : LocalAddress, port));
 			_disposable.Add(
 				Observable.Defer(() => Client.ReceiveAsync().ToObservable())

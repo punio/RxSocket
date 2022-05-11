@@ -11,6 +11,13 @@ namespace TestApp_Core30
 	{
 		static void Main(string[] args)
 		{
+			var multicast1 = new RxUdpListener();
+			multicast1.LocalAddress = IPAddress.Parse("192.168.1.100");
+			multicast1.Listen("239.192.0.4", "192.168.1.100", 60004);
+			var multicast2 = new RxUdpListener();
+			multicast2.LocalAddress = IPAddress.Parse("192.168.1.100");
+			multicast2.Listen("239.192.0.4", "192.168.1.100", 60004);
+
 			var server = new RxTcpServer();
 			server.Error.Subscribe(e => Warning($"[Server] error.({e.Method}) {e.Exception.Message}"));
 			server.Accepted.Subscribe(c =>
