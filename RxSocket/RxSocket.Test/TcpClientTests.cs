@@ -1,10 +1,65 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reactive.Linq;
+using System.Reactive.Threading.Tasks;
 
 namespace RxSocket.Test;
 
 public class TcpClientTests
 {
+    [Fact]
+    public async Task PublishedDataKeepsItsContentsAfterAnotherReceive()
+    {
+        using var timeout = Loopback.CreateTimeout();
+        using var listener = Loopback.BindTcpSocket(IPAddress.Loopback);
+        listener.Listen(1);
+        var endpoint = Assert.IsType<IPEndPoint>(listener.LocalEndPoint);
+        using var client = new RxTcpClient { EnableKeepAlive = false, BufferSize = 1 };
+        var received = client.Received.Take(2).ToArray().ToTask(timeout.Token);
+
+        await client.ConnectAsync(endpoint.Address.ToString(), endpoint.Port).WaitAsync(timeout.Token);
+        using var peer = await listener.AcceptAsync(timeout.Token);
+        Assert.Equal(1, await peer.SendAsync(new byte[] { 42 }, SocketFlags.None, timeout.Token));
+        Assert.Equal(1, await peer.SendAsync(new byte[] { 99 }, SocketFlags.None, timeout.Token));
+
+        var packets = await received;
+        Assert.NotSame(packets[0].Data, packets[1].Data);
+        Assert.Equal(new byte[] { 42 }, packets[0].Data);
+        Assert.Equal(new byte[] { 99 }, packets[1].Data);
+    }
+
+    [Fact]
+    public async Task ChangingBufferSizeInReceiveHandlerAppliesToTheNextRead()
+    {
+        using var timeout = Loopback.CreateTimeout();
+        using var listener = Loopback.BindTcpSocket(IPAddress.Loopback);
+        listener.Listen(1);
+        var endpoint = Assert.IsType<IPEndPoint>(listener.LocalEndPoint);
+        using var client = new RxTcpClient { EnableKeepAlive = false, BufferSize = 8 };
+        var firstReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var received = client.Received
+            .Do(_ =>
+            {
+                client.BufferSize = 1;
+                firstReceived.TrySetResult();
+            })
+            .Take(3)
+            .ToArray()
+            .ToTask(timeout.Token);
+
+        await client.ConnectAsync(endpoint.Address.ToString(), endpoint.Port).WaitAsync(timeout.Token);
+        using var peer = await listener.AcceptAsync(timeout.Token);
+        Assert.Equal(1, await peer.SendAsync(new byte[] { 10 }, SocketFlags.None, timeout.Token));
+        await firstReceived.Task.WaitAsync(timeout.Token);
+
+        Assert.Equal(2, await peer.SendAsync(new byte[] { 20, 30 }, SocketFlags.None, timeout.Token));
+
+        var packets = await received;
+        Assert.Equal(new byte[] { 10 }, packets[0].Data);
+        Assert.Equal(new byte[] { 20 }, packets[1].Data);
+        Assert.Equal(new byte[] { 30 }, packets[2].Data);
+    }
+
     [Fact]
     public async Task ConnectionRefusalReleasesSocketAndAllowsRetry()
     {

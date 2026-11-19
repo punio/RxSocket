@@ -8,6 +8,85 @@ namespace RxSocket.Test;
 public class TcpServerTests
 {
     [Fact]
+    public async Task ClientsReturnsAReadOnlySnapshotOfMembership()
+    {
+        using var timeout = Loopback.CreateTimeout();
+        using var server = new RxTcpServer { EnableKeepAlive = false };
+        server.Listen(IPAddress.Loopback.ToString(), 0);
+        var endpoint = Assert.IsType<IPEndPoint>(server.Server.LocalEndPoint);
+        var accepted = server.Accepted.FirstAsync().ToTask(timeout.Token);
+        using var firstPeer = await Loopback.ConnectTcpPeerAsync(endpoint, timeout.Token);
+        var firstClient = await accepted;
+        var snapshot = server.Clients;
+        Assert.Same(firstClient, Assert.Single(snapshot));
+        Assert.Throws<NotSupportedException>(() => ((ICollection<RxTcpClient>)snapshot).Clear());
+
+        accepted = server.Accepted.FirstAsync().ToTask(timeout.Token);
+        using var secondPeer = await Loopback.ConnectTcpPeerAsync(endpoint, timeout.Token);
+        var secondClient = await accepted;
+        Assert.Contains(secondClient, server.Clients);
+        Assert.Same(firstClient, Assert.Single(snapshot));
+
+        var closed = server.Closed.FirstAsync().ToTask(timeout.Token);
+        firstPeer.Shutdown(SocketShutdown.Send);
+        Assert.Equal(firstPeer.LocalEndPoint, await closed);
+        Assert.Same(secondClient, Assert.Single(server.Clients));
+        Assert.Same(firstClient, Assert.Single(snapshot));
+    }
+
+    [Fact]
+    public async Task BroadcastSendsToEveryConnectedClient()
+    {
+        using var timeout = Loopback.CreateTimeout();
+        using var server = new RxTcpServer { EnableKeepAlive = false };
+        server.Listen(IPAddress.Loopback.ToString(), 0);
+        var endpoint = Assert.IsType<IPEndPoint>(server.Server.LocalEndPoint);
+        var accepted = server.Accepted.Take(2).ToArray().ToTask(timeout.Token);
+        using var first = await Loopback.ConnectTcpPeerAsync(endpoint, timeout.Token);
+        using var second = await Loopback.ConnectTcpPeerAsync(endpoint, timeout.Token);
+        await accepted;
+
+        var firstData = new byte[1];
+        var secondData = new byte[1];
+        var firstReceive = first.ReceiveAsync(firstData, SocketFlags.None, timeout.Token).AsTask();
+        var secondReceive = second.ReceiveAsync(secondData, SocketFlags.None, timeout.Token).AsTask();
+
+        server.Broadcast(new byte[] { 42 });
+
+        Assert.Equal(1, await firstReceive);
+        Assert.Equal(1, await secondReceive);
+        Assert.Equal(new byte[] { 42 }, firstData);
+        Assert.Equal(new byte[] { 42 }, secondData);
+    }
+
+    [Fact]
+    public async Task ReceivesLargeTransferWithSmallBuffer()
+    {
+        const int payloadBytes = 4 * 1024 * 1024;
+        var sendBuffer = new byte[64 * 1024];
+        using var timeout = Loopback.CreateTimeout();
+        using var server = new RxTcpServer { EnableKeepAlive = false, BufferSize = 1024 };
+        var received = server.Received
+            .Scan(0, (total, packet) => total + packet.Data.Length)
+            .FirstAsync(total => total >= payloadBytes)
+            .ToTask(timeout.Token);
+        server.Listen(IPAddress.Loopback.ToString(), 0);
+        var endpoint = Assert.IsType<IPEndPoint>(server.Server.LocalEndPoint);
+        using var peer = await Loopback.ConnectTcpPeerAsync(endpoint, timeout.Token);
+
+        int remaining = payloadBytes;
+        while (remaining > 0)
+        {
+            int length = Math.Min(remaining, sendBuffer.Length);
+            int sent = await peer.SendAsync(sendBuffer.AsMemory(0, length), SocketFlags.None, timeout.Token);
+            Assert.True(sent > 0);
+            remaining -= sent;
+        }
+
+        Assert.Equal(payloadBytes, await received);
+    }
+
+    [Fact]
     public async Task ExchangesDataAndRemovesDisconnectedClient()
     {
         using var timeout = Loopback.CreateTimeout();

@@ -9,7 +9,16 @@ namespace TestApp
 {
 	class Program
 	{
-		static void Main(string[] args)
+		static async Task<int> Main(string[] args)
+		{
+			if (args.Length > 0 && args[0] == "--perf")
+				return await TcpPerformance.RunAsync(args[1..]);
+
+			RunInteractive();
+			return 0;
+		}
+
+		static void RunInteractive()
 		{
 			var _listener = new RxUdpListener();
 			_listener.LocalAddress = IPAddress.Parse("192.168.1.100");

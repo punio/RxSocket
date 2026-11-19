@@ -276,23 +276,40 @@ namespace RxSocket
 
 		private void StartReceive(ReceiveState state)
 		{
-			if (!ReferenceEquals(Client, state.Socket)) return;
+			while (ReferenceEquals(Client, state.Socket))
+			{
+				int bufferSize = BufferSize;
+				var buffer = state.Buffer;
+				if (buffer == null || buffer.Length != bufferSize)
+				{
+					buffer = new byte[bufferSize];
+					state.Buffer = buffer;
+				}
 
-			var buffer = new byte[BufferSize];
-			state.Buffer = buffer;
-			try
-			{
-				state.Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ReceiveCallback, state);
-			}
-			catch (Exception exp)
-			{
-				ReceiveFailed(state.Socket, "BeginReceive", exp);
+				try
+				{
+					var result = state.Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ReceiveCallback, state);
+					if (!result.CompletedSynchronously || !CompleteReceive(state, result)) return;
+				}
+				catch (Exception exp)
+				{
+					ReceiveFailed(state.Socket, "BeginReceive", exp);
+					return;
+				}
 			}
 		}
 
 		private void ReceiveCallback(IAsyncResult result)
 		{
+			// StartReceive handles inline completions in its loop.
+			if (result.CompletedSynchronously) return;
+
 			var state = (ReceiveState)result.AsyncState;
+			if (CompleteReceive(state, result)) StartReceive(state);
+		}
+
+		private bool CompleteReceive(ReceiveState state, IAsyncResult result)
+		{
 			int length;
 			try
 			{
@@ -301,22 +318,21 @@ namespace RxSocket
 			catch (Exception exp)
 			{
 				ReceiveFailed(state.Socket, "EndReceive", exp);
-				return;
+				return false;
 			}
 
-			if (!ReferenceEquals(Client, state.Socket)) return;
+			if (!ReferenceEquals(Client, state.Socket)) return false;
 
 			if (length == 0)
 			{
 				Close(state.Socket);
-				return;
+				return false;
 			}
 
 			var data = new byte[length];
 			Array.Copy(state.Buffer, data, length);
 			_received.OnNext(new TcpData(this, data, state.LocalEndPoint, state.RemoteEndPoint));
-
-			StartReceive(state);
+			return true;
 		}
 
 		private void ReceiveFailed(Socket socket, string method, Exception exception)

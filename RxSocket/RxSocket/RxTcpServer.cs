@@ -19,8 +19,11 @@ namespace RxSocket
 		{
 			get
 			{
-				var session = Volatile.Read(ref _session);
-				return session?.Clients.Keys.ToList().AsReadOnly() ?? EmptyClients;
+				var clients = Volatile.Read(ref _session)?.Clients.Keys;
+				if (clients == null) return EmptyClients;
+
+				// Keys already returns a snapshot. Reuse it when it has the public return type.
+				return clients as ReadOnlyCollection<RxTcpClient> ?? clients.ToList().AsReadOnly();
 			}
 		}
 

@@ -66,5 +66,24 @@ try{
 Run the .NET 10 test project from the repository root with `dotnet test RxSocket/RxSocket.sln`.
 The tests use local loopback sockets and OS-assigned ports. Dual-stack DNS and multicast tests are skipped when their loopback requirements are unavailable.
 
+## Performance measurements
+
+Run the TCP receive benchmark from the repository root with the .NET 10 SDK.
+
+```powershell
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf
+```
+
+The benchmark compares 1, 4 and 16 KiB receive buffers over IPv4 loopback. The default is one client sending 64 MiB per measured run, with three runs per buffer size after a warm-up. The positional arguments set the MiB per client, runs per buffer, and number of clients.
+
+```powershell
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf 1 3 100
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf 1 3 100 --duplex
+```
+
+Each run starts transfers after all clients connect. With `--duplex`, the accepted server sockets also send the specified payload to each client while the server receives through RxSocket. The benchmark checks that each connection transfers the expected byte count.
+
+Each row reports aggregate throughput in MiB/s, managed bytes allocated per MiB transferred, and the number of server receive notifications. Duplex totals include both directions. Allocations cover the entire benchmark process.
+
 ## Author
 [punio](https://github.com/punio)
