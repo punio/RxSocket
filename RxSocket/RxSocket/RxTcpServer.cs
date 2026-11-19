@@ -63,25 +63,10 @@ namespace RxSocket
 		{
 			Close();
 
-			if (!IPAddress.TryParse(localAddress, out var address))
-			{
-				var hostEntry = Dns.GetHostEntry(localAddress);
-				if ((hostEntry.AddressList?.Length ?? 0) <= 0) throw new Exception("Invalid Address");
-				address = hostEntry.AddressList[0];
-			}
-			var endPoint = new IPEndPoint(address, port);
-
-			var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-			try
-			{
-				socket.Bind(endPoint);
-				socket.Listen(backlog);
-			}
-			catch
-			{
-				socket.Dispose();
-				throw;
-			}
+			var addresses = IPAddress.TryParse(localAddress, out var address)
+				? new[] { address }
+				: Dns.GetHostAddresses(localAddress);
+			var socket = BindAndListen(addresses, port, backlog);
 
 			var session = new ListeningSession(socket);
 			try
@@ -111,6 +96,39 @@ namespace RxSocket
 		public void Broadcast(byte[] data)
 		{
 			foreach (var client in Clients) client.Send(data);
+		}
+
+		private static Socket BindAndListen(IPAddress[] addresses, int port, int backlog)
+		{
+			for (var index = 0; index < addresses.Length; index++)
+			{
+				try
+				{
+					return BindAndListen(new IPEndPoint(addresses[index], port), backlog);
+				}
+				catch (SocketException) when (index + 1 < addresses.Length)
+				{
+					// Try the next resolved address.
+				}
+			}
+
+			throw new SocketException((int)SocketError.HostNotFound);
+		}
+
+		private static Socket BindAndListen(IPEndPoint endpoint, int backlog)
+		{
+			var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+			try
+			{
+				socket.Bind(endpoint);
+				socket.Listen(backlog);
+				return socket;
+			}
+			catch
+			{
+				socket.Dispose();
+				throw;
+			}
 		}
 
 		private bool IsListening(ListeningSession session) => ReferenceEquals(Volatile.Read(ref _session), session);
