@@ -1,1 +1,3 @@
-nuget.exe pack .\RxSocket.nuspec -OutputDirectory nuget
+@echo off
+dotnet pack "%~dp0RxSocket.nuspec" --output "%~dp0nuget"
+exit /b %errorlevel%

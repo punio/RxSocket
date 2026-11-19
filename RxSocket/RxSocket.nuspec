@@ -2,11 +2,12 @@
 <package >
   <metadata>
     <id>Punio.RxSocket</id>
-    <version>1.1.18</version>
+    <version>1.2.0</version>
     <title>RxSocket</title>
     <authors>punio</authors>
     <owners>punio</owners>
-    <licenseUrl>https://github.com/punio/RxSocket/blob/master/LICENSE</licenseUrl>
+    <license type="expression">MIT</license>
+    <readme>docs\README.md</readme>
     <projectUrl>https://github.com/punio/RxSocket</projectUrl>
     <!--
     <iconUrl>http://ICON_URL_HERE_OR_DELETE_THIS_LINE</iconUrl>
@@ -14,6 +15,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Tiny socket wrapper for Reactive Extensions</description>
     <releaseNotes>
+* 1.2.0    - Target .NET 6 and later and improve TCP and UDP receive performance.
 * 1.1.18   - I fixed a issue. Please look at github.
 * 1.1.16   - I fixed a issue. Please look at github.
 * 1.1.15   - I fixed a issue. Please look at github.
@@ -31,6 +33,8 @@
     </dependencies>
   </metadata>
   <files>
+    <file src="..\LICENSE" target="docs\LICENSE"/>
+    <file src="..\README.md" target="docs\"/>
     <file src="RxSocket\bin\Release\net6.0\RxSocket.dll" target="lib\net6.0"/>
     <file src="RxSocket\bin\Release\net6.0\RxSocket.pdb" target="lib\net6.0"/>
   </files>
