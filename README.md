@@ -2,6 +2,8 @@
 
 Socket wrapper for Rx
 
+Targets .NET Standard 2.0.
+
 ## Install
 ```
 PM> Install-Package Punio.RxSocket 

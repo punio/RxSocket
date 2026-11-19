@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using RxSocket;
 
-namespace TestApp_Core30
+namespace TestApp
 {
 	class Program
 	{
@@ -45,7 +45,6 @@ namespace TestApp_Core30
 			client.Received.Subscribe(t => Receive($"[Client] Received {t.RemoteEndPoint} {t.Data.Length} bytes."));
 			client.KeepAliveTime = 10 * 1000;
 			client.KeepAliveInterval = 1000;
-			client.KeepAliveRetryCount = 5;
 			try
 			{
 				client.ConnectAsync("127.0.0.1", 12345).Wait();
@@ -61,9 +60,9 @@ namespace TestApp_Core30
 			var line = Console.ReadLine();
 
 			// change keep alive
-			client.SetKeepAliveTime(3);
-			client.SetKeepAliveInterval(1);
-			client.SetKeepAliveRetryCount(1);
+			client.KeepAliveTime = 3000;
+			client.KeepAliveInterval = 1000;
+			client.SetKeepAlive();
 
 			while (!string.IsNullOrEmpty(line))
 			{
