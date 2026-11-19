@@ -1,29 +1,27 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
-using System.Text;
-using System.Threading.Tasks;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 
 namespace RxSocket
 {
 	public class RxUdpListener : IDisposable
 	{
 		#region Property
-		public UdpClient Client { get; private set; }
+		public UdpClient Client => Volatile.Read(ref _session)?.Client;
 
 		/// <summary>
 		/// If this value is specified, then the listen method at Unicast binds to the specified local address.
 		/// </summary>
 		public IPAddress LocalAddress { get; set; } = IPAddress.None;
 
-		public bool IsMulticast { get; private set; }
-		public IPAddress MulticastAddress { get; private set; }
+		public bool IsMulticast => MulticastAddress != null;
+		public IPAddress MulticastAddress => Volatile.Read(ref _session)?.MulticastAddress;
 		#endregion
 
 		#region Observable
@@ -32,7 +30,7 @@ namespace RxSocket
 
 		#region Field
 		private readonly Subject<UdpData> _received = new Subject<UdpData>();
-		private CompositeDisposable _disposable;
+		private ListeningSession _session;
 		#endregion
 
 		public RxUdpListener()
@@ -44,29 +42,8 @@ namespace RxSocket
 
 		public void Listen(int port, bool enableBroadcast = true, bool exclusiveAddressUse = false, bool ipV6 = false)
 		{
-			Close();
-			_disposable = new CompositeDisposable();
-
-			if (ipV6)
-			{
-				Client = new UdpClient(AddressFamily.InterNetworkV6);
-			}
-			else
-			{
-				Client = new UdpClient();
-			}
-
-			Client.EnableBroadcast = enableBroadcast;
-			Client.ExclusiveAddressUse = exclusiveAddressUse;
-			if (!exclusiveAddressUse) Client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-			Client.Client.Bind(new IPEndPoint(LocalAddress.Equals(IPAddress.None) ? (ipV6 ? IPAddress.IPv6Any : IPAddress.Any) : LocalAddress, port));
-			_disposable.Add(
-				Observable.Defer(() => Client.ReceiveAsync().ToObservable())
-					.Repeat()
-					.Subscribe(r => _received.OnNext(new UdpData(r.RemoteEndPoint, r.Buffer)))
-				);
-
-			IsMulticast = false;
+			var addressFamily = ipV6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork;
+			StartListening(port, enableBroadcast, exclusiveAddressUse, addressFamily);
 		}
 
 		/// <summary>
@@ -78,10 +55,9 @@ namespace RxSocket
 		/// <param name="exclusiveAddressUse"></param>
 		public void Listen(string multicastAddress, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
 		{
-			MulticastAddress = IPAddress.Parse(multicastAddress);
-			Listen(port, enableBroadcast, exclusiveAddressUse, MulticastAddress.AddressFamily == AddressFamily.InterNetworkV6);
-			Client.JoinMulticastGroup(MulticastAddress);
-			IsMulticast = true;
+			var group = IPAddress.Parse(multicastAddress);
+			StartListening(port, enableBroadcast, exclusiveAddressUse, group.AddressFamily, group,
+				client => client.JoinMulticastGroup(group));
 		}
 
 		/// <summary>
@@ -94,11 +70,10 @@ namespace RxSocket
 		/// <param name="exclusiveAddressUse"></param>
 		public void Listen(string multicastAddress, string localAddress, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
 		{
-			MulticastAddress = IPAddress.Parse(multicastAddress);
-			Listen(port, enableBroadcast, exclusiveAddressUse, MulticastAddress.AddressFamily == AddressFamily.InterNetworkV6);
+			var group = IPAddress.Parse(multicastAddress);
 			var localIpAddress = IPAddress.Parse(localAddress);
-			Client.JoinMulticastGroup(MulticastAddress, localIpAddress);
-			IsMulticast = true;
+			StartListening(port, enableBroadcast, exclusiveAddressUse, group.AddressFamily, group,
+				client => client.JoinMulticastGroup(group, localIpAddress));
 		}
 
 		/// <summary>
@@ -112,21 +87,80 @@ namespace RxSocket
 		/// <exception cref="SocketException">This method is only IPv6</exception>
 		public void Listen(string multicastAddress, int nicIndex, int port, bool enableBroadcast = true, bool exclusiveAddressUse = false)
 		{
-			MulticastAddress = IPAddress.Parse(multicastAddress);
-			if (MulticastAddress.AddressFamily != AddressFamily.InterNetworkV6) throw new SocketException((int)SocketError.OperationNotSupported);
+			var group = IPAddress.Parse(multicastAddress);
+			if (group.AddressFamily != AddressFamily.InterNetworkV6) throw new SocketException((int)SocketError.OperationNotSupported);
 
-			Listen(port, enableBroadcast, exclusiveAddressUse, true);
-
-			Client.JoinMulticastGroup(nicIndex, MulticastAddress);
-			IsMulticast = true;
+			StartListening(port, enableBroadcast, exclusiveAddressUse, group.AddressFamily, group,
+				client => client.JoinMulticastGroup(nicIndex, group));
 		}
 
-		public void Close()
+		public void Close() => Interlocked.Exchange(ref _session, null)?.Dispose();
+
+		private void StartListening(int port, bool enableBroadcast, bool exclusiveAddressUse, AddressFamily addressFamily,
+			IPAddress multicastAddress = null, Action<UdpClient> joinMulticastGroup = null)
 		{
-			_disposable?.Dispose();
-			if (IsMulticast) Client?.DropMulticastGroup(MulticastAddress);
-			Client?.Close();
-			Client = null;
+			Close();
+			var session = new ListeningSession(new UdpClient(addressFamily), multicastAddress);
+			var client = session.Client;
+			try
+			{
+				client.EnableBroadcast = enableBroadcast;
+				client.ExclusiveAddressUse = exclusiveAddressUse;
+				if (!exclusiveAddressUse) client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+				var localAddress = LocalAddress;
+				if (IPAddress.None.Equals(localAddress))
+					localAddress = addressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any;
+				client.Client.Bind(new IPEndPoint(localAddress, port));
+				joinMulticastGroup?.Invoke(client);
+
+				Interlocked.Exchange(ref _session, session)?.Dispose();
+				session.ReceiveSubscription.Disposable = Observable.Defer(() => client.ReceiveAsync().ToObservable())
+					.Repeat()
+					.Subscribe(
+						result => _received.OnNext(new UdpData(result.RemoteEndPoint, result.Buffer)),
+						error =>
+						{
+							if (!session.ReceiveSubscription.IsDisposed)
+								ExceptionDispatchInfo.Capture(error).Throw();
+						});
+			}
+			catch
+			{
+				Interlocked.CompareExchange(ref _session, null, session);
+				session.Dispose();
+				throw;
+			}
+		}
+
+		private sealed class ListeningSession : IDisposable
+		{
+			private int _disposed;
+
+			public ListeningSession(UdpClient client, IPAddress multicastAddress)
+			{
+				Client = client;
+				MulticastAddress = multicastAddress;
+			}
+
+			public UdpClient Client { get; }
+			public IPAddress MulticastAddress { get; }
+			public SingleAssignmentDisposable ReceiveSubscription { get; } = new SingleAssignmentDisposable();
+
+			public void Dispose()
+			{
+				if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+				try
+				{
+					ReceiveSubscription.Dispose();
+				}
+				finally
+				{
+					// Closing the socket also drops its multicast memberships.
+					Client.Dispose();
+				}
+			}
 		}
 	}
 }
