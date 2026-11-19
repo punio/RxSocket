@@ -5,7 +5,6 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 
 namespace RxSocket
@@ -26,16 +25,23 @@ namespace RxSocket
 
 		#region Observable
 		public IObservable<UdpData> Received { get; }
+
+		/// <summary>
+		/// Reports asynchronous receive failures after the failed listener has been stopped.
+		/// </summary>
+		public IObservable<ErrorData> Error { get; }
 		#endregion
 
 		#region Field
 		private readonly Subject<UdpData> _received = new Subject<UdpData>();
+		private readonly ISubject<ErrorData> _error = Subject.Synchronize(new Subject<ErrorData>());
 		private ListeningSession _session;
 		#endregion
 
 		public RxUdpListener()
 		{
 			Received = _received.AsObservable();
+			Error = _error.AsObservable();
 		}
 
 		public void Dispose() => this.Close();
@@ -119,17 +125,27 @@ namespace RxSocket
 					.Repeat()
 					.Subscribe(
 						result => _received.OnNext(new UdpData(result.RemoteEndPoint, result.Buffer)),
-						error =>
-						{
-							if (!session.ReceiveSubscription.IsDisposed)
-								ExceptionDispatchInfo.Capture(error).Throw();
-						});
+						error => ReceiveFailed(session, error));
 			}
 			catch
 			{
 				Interlocked.CompareExchange(ref _session, null, session);
 				session.Dispose();
 				throw;
+			}
+		}
+
+		private void ReceiveFailed(ListeningSession session, Exception error)
+		{
+			if (!ReferenceEquals(Interlocked.CompareExchange(ref _session, null, session), session)) return;
+
+			try
+			{
+				session.Dispose();
+			}
+			finally
+			{
+				_error.OnNext(new ErrorData(nameof(UdpClient.ReceiveAsync), error));
 			}
 		}
 

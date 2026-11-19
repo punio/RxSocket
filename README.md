@@ -41,10 +41,15 @@ try{
 ```
 
 ### RxUdpListener
+
+Subscribe to `Error` to detect when a receive failure stops the listener.
+Call `Listen` again to resume receiving with the same `Received` subscription.
+
 ```cs
 var listener = new RxUdpListener();
 // Subscribe
 listener.Received.Subscribe();
+listener.Error.Subscribe(error => Console.WriteLine(error.Exception.Message));
 
 // Listen
 try{
