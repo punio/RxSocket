@@ -41,7 +41,7 @@ namespace RxSocket
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
 		private readonly Subject<RxTcpClient> _accepted = new Subject<RxTcpClient>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
-		private readonly Subject<TcpData> _received = new Subject<TcpData>();
+		private readonly ISubject<TcpData> _received = Subject.Synchronize(new Subject<TcpData>());
 		private static readonly ReadOnlyCollection<RxTcpClient> EmptyClients = Array.AsReadOnly(Array.Empty<RxTcpClient>());
 		private ListeningSession _session;
 		#endregion
