@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,6 +45,7 @@ namespace RxSocket
 		private readonly Subject<TcpData> _received = new Subject<TcpData>();
 		private readonly object _connectionGate = new object();
 		private Socket _client;
+		private object _connectAttempt;
 		#endregion
 
 		public RxTcpClient()
@@ -71,61 +73,103 @@ namespace RxSocket
 
 		public void Connect(string address, int port)
 		{
-			if (Client != null) Close();
-
-			if (!IPAddress.TryParse(address, out var targetAddress))
-			{
-				var hostEntry = Dns.GetHostEntry(address);
-				if ((hostEntry.AddressList?.Length ?? 0) <= 0) throw new Exception("Invalid Address");
-				targetAddress = hostEntry.AddressList[0];
-			}
-
-			var endPoint = new IPEndPoint(targetAddress, port);
-			var socket = CreateConnectingSocket(targetAddress.AddressFamily);
+			var attempt = BeginConnect();
 			try
 			{
-				if (EnableKeepAlive) SetKeepAlive(socket);
-				socket.Connect(endPoint);
-				FinishConnect(socket);
+				var addresses = IPAddress.TryParse(address, out var targetAddress)
+					? new[] { targetAddress }
+					: Dns.GetHostAddresses(address);
+				ConnectToAddresses(addresses, port, attempt, (socket, endpoint) =>
+				{
+					socket.Connect(endpoint);
+					return Task.CompletedTask;
+				}).GetAwaiter().GetResult();
 			}
-			catch
+			finally
 			{
-				Close(socket);
-				throw;
+				EndConnect(attempt);
 			}
 		}
 
 		public async Task ConnectAsync(string address, int port)
 		{
-			if (Client != null) Close();
-
-			if (!IPAddress.TryParse(address, out var targetAddress))
-			{
-				var hostEntry = await Dns.GetHostEntryAsync(address);
-				if ((hostEntry.AddressList?.Length ?? 0) <= 0) throw new Exception("Invalid Address");
-				targetAddress = hostEntry.AddressList[0];
-			}
-
-			var endPoint = new IPEndPoint(targetAddress, port);
-			var socket = CreateConnectingSocket(targetAddress.AddressFamily);
+			var attempt = BeginConnect();
 			try
 			{
-				if (EnableKeepAlive) SetKeepAlive(socket);
-				await socket.ConnectAsync(endPoint);
-				FinishConnect(socket);
+				var addresses = IPAddress.TryParse(address, out var targetAddress)
+					? new[] { targetAddress }
+					: await Dns.GetHostAddressesAsync(address);
+				await ConnectToAddresses(addresses, port, attempt, (socket, endpoint) => socket.ConnectAsync(endpoint));
 			}
-			catch
+			finally
 			{
-				Close(socket);
-				throw;
+				EndConnect(attempt);
 			}
 		}
 
-		private Socket CreateConnectingSocket(AddressFamily addressFamily)
+		private object BeginConnect()
+		{
+			Close();
+			lock (_connectionGate)
+			{
+				if (_client != null || _connectAttempt != null)
+					throw new InvalidOperationException("Another connection is already active.");
+
+				_connectAttempt = new object();
+				return _connectAttempt;
+			}
+		}
+
+		private void EndConnect(object attempt)
 		{
 			lock (_connectionGate)
 			{
-				if (_client != null) throw new InvalidOperationException("Another socket is already active.");
+				if (ReferenceEquals(_connectAttempt, attempt)) _connectAttempt = null;
+			}
+		}
+
+		private async Task ConnectToAddresses(IPAddress[] addresses, int port, object attempt, Func<Socket, EndPoint, Task> connect)
+		{
+			if (addresses.Length == 0) throw new SocketException((int)SocketError.HostNotFound);
+
+			ExceptionDispatchInfo lastError = null;
+			foreach (var address in addresses)
+			{
+				var endpoint = new IPEndPoint(address, port);
+				Socket socket = null;
+				var connected = false;
+				try
+				{
+					try
+					{
+						socket = CreateConnectingSocket(address.AddressFamily, attempt);
+						if (EnableKeepAlive) SetKeepAlive(socket);
+						await connect(socket, endpoint);
+					}
+					catch (SocketException exception)
+					{
+						lastError = ExceptionDispatchInfo.Capture(exception);
+						continue;
+					}
+
+					FinishConnect(socket);
+					connected = true;
+					return;
+				}
+				finally
+				{
+					if (!connected && socket != null) Close(socket);
+				}
+			}
+
+			lastError.Throw();
+		}
+
+		private Socket CreateConnectingSocket(AddressFamily addressFamily, object attempt)
+		{
+			lock (_connectionGate)
+			{
+				if (!ReferenceEquals(_connectAttempt, attempt)) throw new ObjectDisposedException(nameof(Socket));
 
 				var socket = new Socket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
 				Volatile.Write(ref _client, socket);
@@ -147,18 +191,20 @@ namespace RxSocket
 			StartReceive(socket);
 		}
 
-		public void Close() => Close(Client);
+		public void Close() => Close(expectedSocket: null);
 
-		private void Close(Socket socket)
+		private void Close(Socket expectedSocket)
 		{
-			if (socket == null) return;
-
+			Socket socket;
 			EndPoint endPoint;
 			bool wasConnected;
 			lock (_connectionGate)
 			{
-				if (!ReferenceEquals(_client, socket)) return;
+				if (expectedSocket == null) _connectAttempt = null;
+				else if (!ReferenceEquals(_client, expectedSocket)) return;
 
+				socket = _client;
+				if (socket == null) return;
 				endPoint = RemoteEndPoint;
 				wasConnected = IsConnect;
 				IsConnect = false;
