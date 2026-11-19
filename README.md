@@ -2,7 +2,7 @@
 
 Socket wrapper for Rx
 
-Targets .NET Standard 2.0.
+Targets .NET 6 and later.
 
 ## Install
 ```
@@ -61,6 +61,19 @@ try{
 
 
 
+Set `ReceiveBufferSize` in bytes before calling `Listen` to let the socket queue more datagrams during bursts.
+The default value of zero uses the operating system setting.
+
+Use `DatagramReceived` to read the payload directly from the reusable receive buffer.
+The span is valid only until the synchronous handler returns. Call `data.ToArray()` inside the handler if you need to retain it.
+`Received` provides an independent payload array for each datagram, including when both APIs are used together.
+
+```cs
+using var listener = new RxUdpListener { ReceiveBufferSize = 4 * 1024 * 1024 };
+listener.DatagramReceived += (from, data) => Console.WriteLine($"{from} sent {data.Length} bytes");
+listener.Listen(10000);
+```
+
 ## Tests
 
 Run the .NET 10 test project from the repository root with `dotnet test RxSocket/RxSocket.sln`.
@@ -99,9 +112,12 @@ Each row reports aggregate throughput in MiB/s, managed bytes allocated per MiB 
 ```powershell
 dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-udp
 dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-udp 1000 1200 3 100
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-udp 1000 1200 3 100 --fast --receive-buffer=4194304
 ```
 
 The UDP benchmark sends IPv4 loopback datagrams to one `RxUdpListener`. The arguments set the datagrams per sender, payload size in bytes, run count, and sender count. The default is 50,000 datagrams of 1,200 bytes per run with one sender and three measured runs after a warm-up.
+
+`--fast` measures the `DatagramReceived` API and `--receive-buffer=bytes` requests a socket receive buffer size. The output shows the size reported by the socket.
 
 Each run reports sent and received datagrams, loss percentage, receive throughput, and process-wide managed allocations per MiB received. Datagrams are counted once by sequence number. The receiver can drain for up to 250 ms after sending finishes. Throughput uses the later of the final send and final receive as the end of the measured interval.
 

@@ -14,7 +14,8 @@ namespace TestApp
 	{
 		private const int BytesPerMiB = 1024 * 1024;
 		private const int MaxPayloadBytes = 65_507;
-		private const string Usage = "Usage: TestApp --perf-udp [datagrams-per-sender] [payload-bytes] [runs] [senders]";
+		private const string Usage = "Usage: TestApp --perf-udp [datagrams-per-sender] [payload-bytes] [runs] [senders] [--fast] [--receive-buffer=bytes]";
+		private const string ReceiveBufferOption = "--receive-buffer=";
 		private static readonly TimeSpan DrainTime = TimeSpan.FromMilliseconds(250);
 
 		internal static async Task<int> RunAsync(string[] args)
@@ -23,6 +24,7 @@ namespace TestApp
 			{
 				Console.WriteLine(Usage);
 				Console.WriteLine("Defaults to 50,000 datagrams of 1,200 bytes, 3 runs, and 1 sender.");
+				Console.WriteLine("Use --fast to measure DatagramReceived. The receive buffer defaults to the operating system setting.");
 				return 0;
 			}
 
@@ -30,6 +32,29 @@ namespace TestApp
 			int payloadBytes = 1200;
 			int runs = 3;
 			int senderCount = 1;
+			bool fast = false;
+			int receiveBufferSize = 0;
+			int optionsStart = Array.FindIndex(args, arg => arg.StartsWith("--", StringComparison.Ordinal));
+			if (optionsStart >= 0)
+			{
+				foreach (string option in args[optionsStart..])
+				{
+					if (option == "--fast")
+					{
+						fast = true;
+						continue;
+					}
+
+					if (!option.StartsWith(ReceiveBufferOption, StringComparison.Ordinal) ||
+						!int.TryParse(option.AsSpan(ReceiveBufferOption.Length), out receiveBufferSize) || receiveBufferSize <= 0)
+					{
+						Console.Error.WriteLine(Usage);
+						return 2;
+					}
+				}
+				args = args[..optionsStart];
+			}
+
 			if (args.Length > 4 ||
 				(args.Length > 0 && (!int.TryParse(args[0], out datagrams) || datagrams <= 0)) ||
 				(args.Length > 1 && (!int.TryParse(args[1], out payloadBytes) || payloadBytes < sizeof(int) || payloadBytes > MaxPayloadBytes)) ||
@@ -48,12 +73,14 @@ namespace TestApp
 
 			try
 			{
-				await MeasureAsync(Math.Min(datagrams, 1000), payloadBytes, senderCount);
+				var warmup = await MeasureAsync(Math.Min(datagrams, 1000), payloadBytes, senderCount, receiveBufferSize, fast);
+				string mode = fast ? "DatagramReceived" : "Received";
+				Console.WriteLine($"UDP API: {mode}, socket receive buffer: {warmup.ReceiveBufferSize:N0} bytes");
 
 				Console.WriteLine($"{"Run",4} {"Sent",12} {"Received",12} {"Loss %",9} {"Datagrams/s",14} {"MiB/s",10} {"Alloc B/MiB",16}");
 				for (int run = 0; run < runs; run++)
 				{
-					var measurement = await MeasureAsync(datagrams, payloadBytes, senderCount);
+					var measurement = await MeasureAsync(datagrams, payloadBytes, senderCount, receiveBufferSize, fast);
 					double seconds = measurement.Elapsed.TotalSeconds;
 					double receivedMiB = (long)measurement.Received * payloadBytes / (double)BytesPerMiB;
 					double lossPercent = 100.0 * (sent - measurement.Received) / sent;
@@ -73,11 +100,16 @@ namespace TestApp
 			}
 		}
 
-		private static async Task<Measurement> MeasureAsync(int datagrams, int payloadBytes, int senderCount)
+		private static async Task<Measurement> MeasureAsync(int datagrams, int payloadBytes, int senderCount,
+			int receiveBufferSize, bool fast)
 		{
 			int sent = datagrams * senderCount;
 			using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-			using var listener = new RxUdpListener { LocalAddress = IPAddress.Loopback };
+			using var listener = new RxUdpListener
+			{
+				LocalAddress = IPAddress.Loopback,
+				ReceiveBufferSize = receiveBufferSize
+			};
 			var senders = new Socket[senderCount];
 			var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 			var allReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -88,10 +120,13 @@ namespace TestApp
 
 			using var error = listener.Error.Subscribe(failure => failed.TrySetResult(
 				new InvalidOperationException($"RxUdpListener reported an error in {failure.Method}.", failure.Exception)));
-			using var received = listener.Received.Subscribe(packet =>
+			using var received = fast ? null : listener.Received.Subscribe(packet => CountDatagram(packet.From, packet.Data));
+			if (fast) listener.DatagramReceived += CountDatagram;
+
+			void CountDatagram(IPEndPoint _, ReadOnlySpan<byte> payload)
 			{
-				if (packet.Data.Length != payloadBytes) return;
-				int sequence = BinaryPrimitives.ReadInt32LittleEndian(packet.Data);
+				if (payload.Length != payloadBytes) return;
+				int sequence = BinaryPrimitives.ReadInt32LittleEndian(payload);
 				if (sequence < 0 || sequence >= sent) return;
 
 				lock (seen)
@@ -101,12 +136,13 @@ namespace TestApp
 					lastReceiveTimestamp = Stopwatch.GetTimestamp();
 					if (++receivedCount == sent) allReceived.TrySetResult();
 				}
-			});
+			}
 
 			try
 			{
 				listener.Listen(0, enableBroadcast: false, exclusiveAddressUse: true);
 				var destination = listener.Client.Client.LocalEndPoint;
+				int actualBufferSize = listener.Client.Client.ReceiveBufferSize;
 				var sends = new Task[senderCount];
 				for (int index = 0; index < senders.Length; index++)
 				{
@@ -133,7 +169,7 @@ namespace TestApp
 				{
 					long endTimestamp = Math.Max(sendEnd, lastReceiveTimestamp);
 					long allocated = GC.GetTotalAllocatedBytes(precise: true) - startAllocated;
-					return new Measurement(Stopwatch.GetElapsedTime(startTimestamp, endTimestamp), allocated, receivedCount);
+					return new Measurement(Stopwatch.GetElapsedTime(startTimestamp, endTimestamp), allocated, receivedCount, actualBufferSize);
 				}
 			}
 			catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
@@ -160,6 +196,6 @@ namespace TestApp
 			}
 		}
 
-		private readonly record struct Measurement(TimeSpan Elapsed, long AllocatedBytes, int Received);
+		private readonly record struct Measurement(TimeSpan Elapsed, long AllocatedBytes, int Received, int ReceiveBufferSize);
 	}
 }

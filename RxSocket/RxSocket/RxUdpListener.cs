@@ -1,14 +1,16 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Reactive.Threading.Tasks;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RxSocket
 {
+	/// <summary>Handles a UDP datagram whose payload is valid only during the callback.</summary>
+	public delegate void UdpDatagramHandler(IPEndPoint from, ReadOnlySpan<byte> data);
+
 	public class RxUdpListener : IDisposable
 	{
 		#region Property
@@ -19,6 +21,20 @@ namespace RxSocket
 		/// </summary>
 		public IPAddress LocalAddress { get; set; } = IPAddress.None;
 
+		/// <summary>
+		/// Gets or sets the requested socket receive buffer size in bytes for the next Listen call.
+		/// Zero uses the operating system default.
+		/// </summary>
+		public int ReceiveBufferSize
+		{
+			get => _receiveBufferSize;
+			set
+			{
+				if (value < 0) throw new ArgumentOutOfRangeException(nameof(value));
+				_receiveBufferSize = value;
+			}
+		}
+
 		public bool IsMulticast => MulticastAddress != null;
 		public IPAddress MulticastAddress => Volatile.Read(ref _session)?.MulticastAddress;
 		#endregion
@@ -27,14 +43,23 @@ namespace RxSocket
 		public IObservable<UdpData> Received { get; }
 
 		/// <summary>
-		/// Reports asynchronous receive failures after the failed listener has been stopped.
+		/// Handles datagrams synchronously on the receive loop without copying their payloads.
+		/// Copy the payload during the callback if it is needed later. Treat the sender endpoint as read-only.
+		/// Handler failures stop the listener and are reported through Error.
+		/// </summary>
+		public event UdpDatagramHandler DatagramReceived;
+
+		/// <summary>
+		/// Reports receive and DatagramReceived handler failures after the failed listener has been stopped.
 		/// </summary>
 		public IObservable<ErrorData> Error { get; }
 		#endregion
 
 		#region Field
+		private const int DatagramBufferSize = 65_536;
 		private readonly Subject<UdpData> _received = new Subject<UdpData>();
 		private readonly ISubject<ErrorData> _error = Subject.Synchronize(new Subject<ErrorData>());
+		private int _receiveBufferSize;
 		private ListeningSession _session;
 		#endregion
 
@@ -108,24 +133,23 @@ namespace RxSocket
 			Close();
 			var session = new ListeningSession(new UdpClient(addressFamily), multicastAddress);
 			var client = session.Client;
+			var socket = client.Client;
 			try
 			{
 				client.EnableBroadcast = enableBroadcast;
 				client.ExclusiveAddressUse = exclusiveAddressUse;
-				if (!exclusiveAddressUse) client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+				if (!exclusiveAddressUse) socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+				int receiveBufferSize = ReceiveBufferSize;
+				if (receiveBufferSize != 0) socket.ReceiveBufferSize = receiveBufferSize;
 
 				var localAddress = LocalAddress;
 				if (IPAddress.None.Equals(localAddress))
 					localAddress = addressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any;
-				client.Client.Bind(new IPEndPoint(localAddress, port));
+				socket.Bind(new IPEndPoint(localAddress, port));
 				joinMulticastGroup?.Invoke(client);
 
 				Interlocked.Exchange(ref _session, session)?.Dispose();
-				session.ReceiveSubscription.Disposable = Observable.Defer(() => client.ReceiveAsync().ToObservable())
-					.Repeat()
-					.Subscribe(
-						result => _received.OnNext(new UdpData(result.RemoteEndPoint, result.Buffer)),
-						error => ReceiveFailed(session, error));
+				_ = ReceiveLoopAsync(session, socket);
 			}
 			catch
 			{
@@ -135,7 +159,49 @@ namespace RxSocket
 			}
 		}
 
-		private void ReceiveFailed(ListeningSession session, Exception error)
+		private async Task ReceiveLoopAsync(ListeningSession session, Socket socket)
+		{
+			var buffer = new byte[DatagramBufferSize];
+			var any = socket.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any;
+			var remoteEndPoint = new IPEndPoint(any, 0);
+			while (ReferenceEquals(Volatile.Read(ref _session), session))
+			{
+				SocketReceiveFromResult result;
+				try
+				{
+					// Closing the session's socket ends any pending receive.
+					result = await socket.ReceiveFromAsync(buffer.AsMemory(), SocketFlags.None, remoteEndPoint, CancellationToken.None)
+						.ConfigureAwait(false);
+				}
+				catch (Exception error)
+				{
+					ReceiveFailed(session, nameof(UdpClient.ReceiveAsync), error);
+					return;
+				}
+
+				if (!ReferenceEquals(Volatile.Read(ref _session), session)) return;
+				PublishDatagram(session, (IPEndPoint)result.RemoteEndPoint, buffer.AsSpan(0, result.ReceivedBytes));
+			}
+		}
+
+		private void PublishDatagram(ListeningSession session, IPEndPoint from, ReadOnlySpan<byte> data)
+		{
+			if (_received.HasObservers) _received.OnNext(new UdpData(from, data.ToArray()));
+
+			var handler = DatagramReceived;
+			if (handler == null || !ReferenceEquals(Volatile.Read(ref _session), session)) return;
+
+			try
+			{
+				handler(from, data);
+			}
+			catch (Exception error)
+			{
+				ReceiveFailed(session, nameof(DatagramReceived), error);
+			}
+		}
+
+		private void ReceiveFailed(ListeningSession session, string method, Exception error)
 		{
 			if (!ReferenceEquals(Interlocked.CompareExchange(ref _session, null, session), session)) return;
 
@@ -145,7 +211,7 @@ namespace RxSocket
 			}
 			finally
 			{
-				_error.OnNext(new ErrorData(nameof(UdpClient.ReceiveAsync), error));
+				_error.OnNext(new ErrorData(method, error));
 			}
 		}
 
@@ -161,21 +227,13 @@ namespace RxSocket
 
 			public UdpClient Client { get; }
 			public IPAddress MulticastAddress { get; }
-			public SingleAssignmentDisposable ReceiveSubscription { get; } = new SingleAssignmentDisposable();
 
 			public void Dispose()
 			{
 				if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-				try
-				{
-					ReceiveSubscription.Dispose();
-				}
-				finally
-				{
-					// Closing the socket also drops its multicast memberships.
-					Client.Dispose();
-				}
+				// Closing the socket also drops its multicast memberships.
+				Client.Dispose();
 			}
 		}
 	}

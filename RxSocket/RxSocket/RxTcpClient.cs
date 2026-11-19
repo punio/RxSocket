@@ -263,76 +263,52 @@ namespace RxSocket
 
 		internal void StartReceive(Socket socket)
 		{
-			ReceiveState state;
+			EndPoint localEndPoint;
+			EndPoint remoteEndPoint;
 			lock (_connectionGate)
 			{
 				if (!ReferenceEquals(_client, socket) || !IsConnect) return;
 
-				state = new ReceiveState(socket, LocalEndPoint, RemoteEndPoint);
+				localEndPoint = LocalEndPoint;
+				remoteEndPoint = RemoteEndPoint;
 			}
 
-			StartReceive(state);
+			_ = ReceiveLoopAsync(socket, localEndPoint, remoteEndPoint);
 		}
 
-		private void StartReceive(ReceiveState state)
+		private async Task ReceiveLoopAsync(Socket socket, EndPoint localEndPoint, EndPoint remoteEndPoint)
 		{
-			while (ReferenceEquals(Client, state.Socket))
-			{
-				int bufferSize = BufferSize;
-				var buffer = state.Buffer;
-				if (buffer == null || buffer.Length != bufferSize)
-				{
-					buffer = new byte[bufferSize];
-					state.Buffer = buffer;
-				}
-
-				try
-				{
-					var result = state.Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ReceiveCallback, state);
-					if (!result.CompletedSynchronously || !CompleteReceive(state, result)) return;
-				}
-				catch (Exception exp)
-				{
-					ReceiveFailed(state.Socket, "BeginReceive", exp);
-					return;
-				}
-			}
-		}
-
-		private void ReceiveCallback(IAsyncResult result)
-		{
-			// StartReceive handles inline completions in its loop.
-			if (result.CompletedSynchronously) return;
-
-			var state = (ReceiveState)result.AsyncState;
-			if (CompleteReceive(state, result)) StartReceive(state);
-		}
-
-		private bool CompleteReceive(ReceiveState state, IAsyncResult result)
-		{
-			int length;
+			byte[] buffer = null;
+			// Keep the existing Error.Method values for start and completion failures.
+			string method = "BeginReceive";
 			try
 			{
-				length = state.Socket.EndReceive(result);
+				while (ReferenceEquals(Client, socket))
+				{
+					method = "BeginReceive";
+					int bufferSize = BufferSize;
+					if (buffer == null || buffer.Length != bufferSize) buffer = new byte[bufferSize];
+
+					var receive = socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None);
+					method = "EndReceive";
+					int length = await receive.ConfigureAwait(false);
+
+					if (!ReferenceEquals(Client, socket)) return;
+					if (length == 0)
+					{
+						Close(socket);
+						return;
+					}
+
+					method = nameof(Received);
+					var data = buffer.AsSpan(0, length).ToArray();
+					_received.OnNext(new TcpData(this, data, localEndPoint, remoteEndPoint));
+				}
 			}
 			catch (Exception exp)
 			{
-				ReceiveFailed(state.Socket, "EndReceive", exp);
-				return false;
+				ReceiveFailed(socket, method, exp);
 			}
-
-			if (!ReferenceEquals(Client, state.Socket)) return false;
-
-			if (length == 0)
-			{
-				Close(state.Socket);
-				return false;
-			}
-
-			var data = new byte[length];
-			Array.Copy(state.Buffer, data, length);
-			_received.OnNext(new TcpData(this, data, state.LocalEndPoint, state.RemoteEndPoint));
-			return true;
 		}
 
 		private void ReceiveFailed(Socket socket, string method, Exception exception)
@@ -347,21 +323,6 @@ namespace RxSocket
 			{
 				Close(socket);
 			}
-		}
-
-		private sealed class ReceiveState
-		{
-			public ReceiveState(Socket socket, EndPoint localEndPoint, EndPoint remoteEndPoint)
-			{
-				Socket = socket;
-				LocalEndPoint = localEndPoint;
-				RemoteEndPoint = remoteEndPoint;
-			}
-
-			public Socket Socket { get; }
-			public EndPoint LocalEndPoint { get; }
-			public EndPoint RemoteEndPoint { get; }
-			public byte[] Buffer { get; set; }
 		}
 	}
 }
