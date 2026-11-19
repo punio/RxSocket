@@ -2,7 +2,7 @@
   "profiles": {
     "TestApp": {
       "commandName": "Project",
-      "commandLineArgs": "--perf 1 3 100 --duplex"
+      "commandLineArgs": "--perf-all 1 3 100 --duplex"
     }
   }
 }

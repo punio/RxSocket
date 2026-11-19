@@ -11,11 +11,34 @@ namespace TestApp
 	{
 		static async Task<int> Main(string[] args)
 		{
+			if (args.Length > 0 && args[0] == "--perf-all")
+				return await RunAllPerformanceAsync(args[1..]);
 			if (args.Length > 0 && args[0] == "--perf")
 				return await TcpPerformance.RunAsync(args[1..]);
+			if (args.Length > 0 && args[0] == "--perf-udp")
+				return await UdpPerformance.RunAsync(args[1..]);
 
 			RunInteractive();
 			return 0;
+		}
+
+		static async Task<int> RunAllPerformanceAsync(string[] args)
+		{
+			if (args is ["--help"])
+			{
+				Console.WriteLine("Usage: TestApp --perf-all [TCP arguments] [--udp [UDP arguments]]");
+				Console.WriteLine("Omitted arguments use the individual benchmark defaults.");
+				return 0;
+			}
+
+			int udpStart = Array.IndexOf(args, "--udp");
+			var tcpArgs = udpStart >= 0 ? args[..udpStart] : args;
+			var udpArgs = udpStart >= 0 ? args[(udpStart + 1)..] : Array.Empty<string>();
+
+			int tcpExitCode = await TcpPerformance.RunAsync(tcpArgs);
+			Console.WriteLine();
+			int udpExitCode = await UdpPerformance.RunAsync(udpArgs);
+			return tcpExitCode != 0 ? tcpExitCode : udpExitCode;
 		}
 
 		static void RunInteractive()

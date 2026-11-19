@@ -68,7 +68,16 @@ The tests use local loopback sockets and OS-assigned ports. Dual-stack DNS and m
 
 ## Performance measurements
 
-Run the TCP receive benchmark from the repository root with the .NET 10 SDK.
+Run both benchmarks sequentially in one process from the repository root with the .NET 10 SDK.
+
+```powershell
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-all
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-all 1 3 100 --duplex --udp 1000 1200 3 100
+```
+
+Arguments before `--udp` apply to TCP. Arguments after it apply to UDP. Each benchmark uses its defaults when its arguments are omitted.
+
+### TCP
 
 ```powershell
 dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf
@@ -84,6 +93,17 @@ dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf 1 3 10
 Each run starts transfers after all clients connect. With `--duplex`, the accepted server sockets also send the specified payload to each client while the server receives through RxSocket. The benchmark checks that each connection transfers the expected byte count.
 
 Each row reports aggregate throughput in MiB/s, managed bytes allocated per MiB transferred, and the number of server receive notifications. Duplex totals include both directions. Allocations cover the entire benchmark process.
+
+### UDP
+
+```powershell
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-udp
+dotnet run --project RxSocket/TestApp/TestApp.csproj -c Release -- --perf-udp 1000 1200 3 100
+```
+
+The UDP benchmark sends IPv4 loopback datagrams to one `RxUdpListener`. The arguments set the datagrams per sender, payload size in bytes, run count, and sender count. The default is 50,000 datagrams of 1,200 bytes per run with one sender and three measured runs after a warm-up.
+
+Each run reports sent and received datagrams, loss percentage, receive throughput, and process-wide managed allocations per MiB received. Datagrams are counted once by sequence number. The receiver can drain for up to 250 ms after sending finishes. Throughput uses the later of the final send and final receive as the end of the measured interval.
 
 ## Author
 [punio](https://github.com/punio)
