@@ -61,5 +61,10 @@ try{
 
 
 
+## Tests
+
+Run the .NET 10 test project from the repository root with `dotnet test RxSocket/RxSocket.sln`.
+The tests use local loopback sockets and OS-assigned ports. Dual-stack DNS and multicast tests are skipped when their loopback requirements are unavailable.
+
 ## Author
 [punio](https://github.com/punio)
