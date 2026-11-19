@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net;
@@ -8,16 +7,22 @@ using System.Net.Sockets;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace RxSocket
 {
 	public class RxTcpServer : IDisposable
 	{
 		#region Property
-		public Socket Server { get; private set; }
-		public ReadOnlyCollection<RxTcpClient> Clients { get; private set; }
+		public Socket Server => Volatile.Read(ref _session)?.Socket;
+		public ReadOnlyCollection<RxTcpClient> Clients
+		{
+			get
+			{
+				var session = Volatile.Read(ref _session);
+				return session?.Clients.Keys.ToList().AsReadOnly() ?? EmptyClients;
+			}
+		}
 
 		public bool EnableKeepAlive { get; set; } = true;   // Default Enable keep alive.
 		public int KeepAliveTime { get; set; } = 30 * 60 * 1000;    // Default 30min
@@ -37,7 +42,8 @@ namespace RxSocket
 		private readonly Subject<RxTcpClient> _accepted = new Subject<RxTcpClient>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
 		private readonly Subject<TcpData> _received = new Subject<TcpData>();
-		private readonly ConcurrentDictionary<string, ConnectedClient> _clients = new ConcurrentDictionary<string, ConnectedClient>();
+		private static readonly ReadOnlyCollection<RxTcpClient> EmptyClients = Array.AsReadOnly(Array.Empty<RxTcpClient>());
+		private ListeningSession _session;
 		#endregion
 
 
@@ -47,7 +53,6 @@ namespace RxSocket
 			Accepted = _accepted.AsObservable();
 			Closed = _closed.AsObservable();
 			Received = _received.AsObservable();
-			Clients = new ReadOnlyCollection<RxTcpClient>(_clients.Values.Select(c => c.Client).ToList());
 		}
 
 		public void Dispose() => this.Close();
@@ -56,7 +61,7 @@ namespace RxSocket
 		public void Listen(string localAddress, int port) => Listen(localAddress, port, (int)SocketOptionName.MaxConnections);
 		public void Listen(string localAddress, int port, int backlog)
 		{
-			if (Server != null) Close();
+			Close();
 
 			if (!IPAddress.TryParse(localAddress, out var address))
 			{
@@ -66,35 +71,38 @@ namespace RxSocket
 			}
 			var endPoint = new IPEndPoint(address, port);
 
-			Server = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-			Server.Bind(endPoint);
-			Server.Listen(backlog);
-			StartAccept();
+			var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+			try
+			{
+				socket.Bind(endPoint);
+				socket.Listen(backlog);
+			}
+			catch
+			{
+				socket.Dispose();
+				throw;
+			}
+
+			var session = new ListeningSession(socket);
+			try
+			{
+				Interlocked.Exchange(ref _session, session)?.Dispose();
+			}
+			finally
+			{
+				StartAccept(session);
+			}
 		}
 
 		/// <summary>
 		/// Stop Listen
 		/// </summary>
-		public void Close()
-		{
-			Server?.Close();
-			Server = null;
-			CloseAllClients();
-		}
+		public void Close() => Interlocked.Exchange(ref _session, null)?.Dispose();
 
 		/// <summary>
 		/// Close all connected clients.
 		/// </summary>
-		public void CloseAllClients()
-		{
-			foreach (var client in _clients)
-			{
-				client.Value.Dispose();
-			}
-			_clients.Clear();
-			foreach (var client in Clients) client.Close();
-			Clients = new ReadOnlyCollection<RxTcpClient>(_clients.Values.Select(c => c.Client).ToList());
-		}
+		public void CloseAllClients() => Volatile.Read(ref _session)?.CloseAllClients();
 
 		/// <summary>
 		/// Send to all clients
@@ -105,87 +113,135 @@ namespace RxSocket
 			foreach (var client in Clients) client.Send(data);
 		}
 
-		private void StartAccept()
+		private bool IsListening(ListeningSession session) => ReferenceEquals(Volatile.Read(ref _session), session);
+
+		private void StartAccept(ListeningSession session)
 		{
+			if (!IsListening(session)) return;
+
 			try
 			{
-				Server.BeginAccept(AcceptCallback, null);
+				session.Socket.BeginAccept(AcceptCallback, session);
 			}
 			catch (Exception exp)
 			{
-				_error.OnNext(new ErrorData("BeginAccept", exp));
+				if (IsListening(session)) _error.OnNext(new ErrorData("BeginAccept", exp));
 			}
 		}
 
 		private void AcceptCallback(IAsyncResult result)
 		{
-			if (Server == null) return;
-			Socket client = null;
+			var session = (ListeningSession)result.AsyncState;
 			try
 			{
-				client = Server.EndAccept(result);
+				Socket socket;
+				try
+				{
+					socket = session.Socket.EndAccept(result);
+				}
+				catch (Exception exp)
+				{
+					if (IsListening(session)) _error.OnNext(new ErrorData("EndAccept", exp));
+					return;
+				}
+
+				RegisterClient(session, socket);
+			}
+			finally
+			{
+				StartAccept(session);
+			}
+		}
+
+		private void RegisterClient(ListeningSession session, Socket socket)
+		{
+			RxTcpClient client = null;
+			var subscriptions = new CompositeDisposable();
+			var keepClient = false;
+			Exception failure = null;
+			try
+			{
+				if (!IsListening(session)) return;
+
+				client = new RxTcpClient(socket, startReceiving: false)
+				{
+					EnableKeepAlive = EnableKeepAlive,
+					KeepAliveTime = KeepAliveTime,
+					KeepAliveInterval = KeepAliveInterval,
+					BufferSize = BufferSize
+				};
+				if (client.EnableKeepAlive) client.SetKeepAlive();
+
+				subscriptions.Add(client.Closed.Subscribe(endpoint => ClientClosed(session, client, endpoint)));
+				subscriptions.Add(client.Received.Subscribe(_received));
+				subscriptions.Add(client.Error.Subscribe(_error));
+				session.Clients[client] = subscriptions;
+
+				if (!IsListening(session) || !client.IsConnect) return;
+
+				_accepted.OnNext(client);
+				if (ReferenceEquals(client.Client, socket)) client.StartReceive();
+				keepClient = true;
 			}
 			catch (Exception exp)
 			{
-				_error.OnNext(new ErrorData("EndAccept", exp));
+				failure = exp;
 			}
-
-			if (client != null)
+			finally
 			{
-				try
+				if (!keepClient)
 				{
-					var rxClient = new RxTcpClient(client)
-					{
-						EnableKeepAlive = EnableKeepAlive,
-						KeepAliveTime = KeepAliveTime,
-						KeepAliveInterval = KeepAliveInterval,
-						BufferSize = BufferSize // これだと初回が・・・
-					};
-					if (EnableKeepAlive) rxClient.SetKeepAlive();
-
-					// ↑の処理中にクライアントが切断されることがある
-					if (rxClient.IsConnect)
-					{
-						var connectedClient = new ConnectedClient { Client = rxClient };
-						if (!_clients.TryAdd(connectedClient.Key, connectedClient))
-						{
-							// ???
-
-						}
-
-						Clients = new ReadOnlyCollection<RxTcpClient>(_clients.Values.Select(c => c.Client).ToList());
-						_accepted.OnNext(rxClient); // Notice
-
-						connectedClient.Disposable.Add(rxClient.Closed.Subscribe(ClientClosed));
-						connectedClient.Disposable.Add(rxClient.Received.Subscribe(_received));
-						connectedClient.Disposable.Add(rxClient.Error.Subscribe(_error));
-					}
-				}
-				catch
-				{
+					if (client != null) session.Clients.TryRemove(client, out _);
+					subscriptions.Dispose();
+					if (client == null) socket.Dispose();
+					else client.Close();
 				}
 			}
 
-			StartAccept();
+			if (failure != null && IsListening(session)) _error.OnNext(new ErrorData("AcceptClient", failure));
 		}
 
-		private void ClientClosed(EndPoint endpoint)
+		private void ClientClosed(ListeningSession session, RxTcpClient client, EndPoint endpoint)
 		{
-			ConnectedClient listData;
-			_clients.TryRemove(endpoint.ToString(), out listData);
-			listData.Dispose();
-			Clients = new ReadOnlyCollection<RxTcpClient>(_clients.Values.Select(c => c.Client).ToList());
+			if (!session.Clients.TryRemove(client, out var subscriptions)) return;
+
+			subscriptions.Dispose();
 			_closed.OnNext(endpoint);
 		}
 
-		class ConnectedClient : IDisposable
+		private sealed class ListeningSession : IDisposable
 		{
-			public string Key => Client?.Client?.RemoteEndPoint.ToString();
+			public ListeningSession(Socket socket)
+			{
+				Socket = socket;
+			}
 
-			public RxTcpClient Client { get; set; }
-			public CompositeDisposable Disposable { get; } = new CompositeDisposable();
+			public Socket Socket { get; }
+			public ConcurrentDictionary<RxTcpClient, CompositeDisposable> Clients { get; } =
+				new ConcurrentDictionary<RxTcpClient, CompositeDisposable>();
 
-			public void Dispose() => Disposable.Dispose();
+			public void CloseAllClients()
+			{
+				foreach (var client in Clients.Keys)
+				{
+					if (!Clients.TryRemove(client, out var subscriptions)) continue;
+
+					subscriptions.Dispose();
+					client.Close();
+				}
+			}
+
+			public void Dispose()
+			{
+				try
+				{
+					Socket.Dispose();
+				}
+				finally
+				{
+					CloseAllClients();
+				}
+			}
 		}
 	}
 }

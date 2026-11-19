@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RxSocket
@@ -44,7 +45,7 @@ namespace RxSocket
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
 		private readonly Subject<TcpData> _received = new Subject<TcpData>();
-		private bool _closing;
+		private int _closing;
 		#endregion
 
 		public RxTcpClient()
@@ -54,13 +55,17 @@ namespace RxSocket
 			Received = _received.AsObservable();
 		}
 
-		public RxTcpClient(Socket socket) : this()
+		public RxTcpClient(Socket socket) : this(socket, startReceiving: true)
+		{
+		}
+
+		internal RxTcpClient(Socket socket, bool startReceiving) : this()
 		{
 			Client = socket;
 			IsConnect = true;
 			LocalEndPoint = Client.LocalEndPoint;
 			RemoteEndPoint = Client.RemoteEndPoint;
-			StartReceive();
+			if (startReceiving) StartReceive();
 		}
 
 		public void Dispose() => this.Close();
@@ -84,8 +89,8 @@ namespace RxSocket
 			Client.Connect(endPoint);
 			LocalEndPoint = Client.LocalEndPoint;
 			RemoteEndPoint = Client.RemoteEndPoint;
-			StartReceive();
 			IsConnect = true;
+			StartReceive();
 		}
 
 		public async Task ConnectAsync(string address, int port)
@@ -106,36 +111,43 @@ namespace RxSocket
 			await Client.ConnectAsync(endPoint);
 			LocalEndPoint = Client.LocalEndPoint;
 			RemoteEndPoint = Client.RemoteEndPoint;
-			StartReceive();
 			IsConnect = true;
+			StartReceive();
 		}
 
 		public void Close()
 		{
-			if (_closing) return;
+			if (Interlocked.Exchange(ref _closing, 1) != 0) return;
 
-			if (Client == null)
-			{
-				IsConnect = false;
-				return;
-			}
-
-			_closing = true;
-			var endPoint = RemoteEndPoint;
 			try
 			{
-				endPoint = Client.RemoteEndPoint;
-				if (IsConnect) Client.Shutdown(SocketShutdown.Both);
-				Client.Close();
+				var socket = Client;
+				var endPoint = RemoteEndPoint;
+				var wasConnected = IsConnect;
+				IsConnect = false;
 				Client = null;
+				if (socket == null) return;
+
+				try
+				{
+					using (socket)
+					{
+						if (wasConnected) socket.Shutdown(SocketShutdown.Both);
+					}
+				}
+				catch (Exception exp)
+				{
+					_error.OnNext(new ErrorData("Close", exp));
+				}
+				finally
+				{
+					if (wasConnected) _closed.OnNext(endPoint);
+				}
 			}
-			catch (Exception exp)
+			finally
 			{
-				_error.OnNext(new ErrorData("Close", exp));
+				Volatile.Write(ref _closing, 0);
 			}
-			if (IsConnect) _closed.OnNext(endPoint);
-			IsConnect = false;
-			_closing = false;
 		}
 
 		/// <summary>
@@ -169,31 +181,52 @@ namespace RxSocket
 			Client?.IOControl(IOControlCode.KeepAliveValues, inputParams, null);
 		}
 
-		private void StartReceive()
+		internal void StartReceive()
 		{
+			var socket = Client;
+			if (socket == null) return;
+
 			var buffer = new byte[BufferSize];
 			try
 			{
-				Client.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, RecieveCallback, buffer);
+				socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ReceiveCallback, buffer);
 			}
 			catch (Exception exp)
 			{
-				_error.OnNext(new ErrorData("BeginReceive", exp));
+				if (!ReferenceEquals(socket, Client)) return;
+				try
+				{
+					_error.OnNext(new ErrorData("BeginReceive", exp));
+				}
+				finally
+				{
+					Close();
+				}
 			}
 		}
 
-		private void RecieveCallback(IAsyncResult result)
+		private void ReceiveCallback(IAsyncResult result)
 		{
-			if (_closing || Client == null) return;
+			var socket = Client;
+			if (Volatile.Read(ref _closing) != 0 || socket == null) return;
 
-			var length = 0;
+			int length;
 			try
 			{
-				length = Client.EndReceive(result);
+				length = socket.EndReceive(result);
 			}
 			catch (Exception exp)
 			{
-				_error.OnNext(new ErrorData("EndReceive", exp));
+				if (!ReferenceEquals(socket, Client)) return;
+				try
+				{
+					_error.OnNext(new ErrorData("EndReceive", exp));
+				}
+				finally
+				{
+					Close();
+				}
+				return;
 			}
 
 			if (length <= 0)    // Socket Closed
@@ -207,7 +240,6 @@ namespace RxSocket
 			Array.Copy(buffer, data, data.Length);
 			this._received.OnNext(new TcpData(this, data, LocalEndPoint, RemoteEndPoint));
 
-			if (_closing) return;
 			StartReceive();
 		}
 	}
