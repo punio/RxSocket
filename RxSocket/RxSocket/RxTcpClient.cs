@@ -1,11 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,7 +11,7 @@ namespace RxSocket
 	public class RxTcpClient : IDisposable
 	{
 		#region Property
-		public Socket Client { get; private set; }
+		public Socket Client => Volatile.Read(ref _client);
 		public bool IsConnect { get; private set; }
 
 		public EndPoint LocalEndPoint { get; private set; }
@@ -45,7 +42,8 @@ namespace RxSocket
 		private readonly Subject<ErrorData> _error = new Subject<ErrorData>();
 		private readonly Subject<EndPoint> _closed = new Subject<EndPoint>();
 		private readonly Subject<TcpData> _received = new Subject<TcpData>();
-		private int _closing;
+		private readonly object _connectionGate = new object();
+		private Socket _client;
 		#endregion
 
 		public RxTcpClient()
@@ -61,11 +59,11 @@ namespace RxSocket
 
 		internal RxTcpClient(Socket socket, bool startReceiving) : this()
 		{
-			Client = socket;
+			_client = socket;
 			IsConnect = true;
-			LocalEndPoint = Client.LocalEndPoint;
-			RemoteEndPoint = Client.RemoteEndPoint;
-			if (startReceiving) StartReceive();
+			LocalEndPoint = socket.LocalEndPoint;
+			RemoteEndPoint = socket.RemoteEndPoint;
+			if (startReceiving) StartReceive(socket);
 		}
 
 		public void Dispose() => this.Close();
@@ -83,14 +81,18 @@ namespace RxSocket
 			}
 
 			var endPoint = new IPEndPoint(targetAddress, port);
-			Client = new Socket(targetAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-			if (EnableKeepAlive) SetKeepAlive();
-
-			Client.Connect(endPoint);
-			LocalEndPoint = Client.LocalEndPoint;
-			RemoteEndPoint = Client.RemoteEndPoint;
-			IsConnect = true;
-			StartReceive();
+			var socket = CreateConnectingSocket(targetAddress.AddressFamily);
+			try
+			{
+				if (EnableKeepAlive) SetKeepAlive(socket);
+				socket.Connect(endPoint);
+				FinishConnect(socket);
+			}
+			catch
+			{
+				Close(socket);
+				throw;
+			}
 		}
 
 		public async Task ConnectAsync(string address, int port)
@@ -105,48 +107,78 @@ namespace RxSocket
 			}
 
 			var endPoint = new IPEndPoint(targetAddress, port);
-			Client = new Socket(targetAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-			if (EnableKeepAlive) SetKeepAlive();
-
-			await Client.ConnectAsync(endPoint);
-			LocalEndPoint = Client.LocalEndPoint;
-			RemoteEndPoint = Client.RemoteEndPoint;
-			IsConnect = true;
-			StartReceive();
+			var socket = CreateConnectingSocket(targetAddress.AddressFamily);
+			try
+			{
+				if (EnableKeepAlive) SetKeepAlive(socket);
+				await socket.ConnectAsync(endPoint);
+				FinishConnect(socket);
+			}
+			catch
+			{
+				Close(socket);
+				throw;
+			}
 		}
 
-		public void Close()
+		private Socket CreateConnectingSocket(AddressFamily addressFamily)
 		{
-			if (Interlocked.Exchange(ref _closing, 1) != 0) return;
+			lock (_connectionGate)
+			{
+				if (_client != null) throw new InvalidOperationException("Another socket is already active.");
+
+				var socket = new Socket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
+				Volatile.Write(ref _client, socket);
+				return socket;
+			}
+		}
+
+		private void FinishConnect(Socket socket)
+		{
+			lock (_connectionGate)
+			{
+				if (!ReferenceEquals(_client, socket)) throw new ObjectDisposedException(nameof(Socket));
+
+				LocalEndPoint = socket.LocalEndPoint;
+				RemoteEndPoint = socket.RemoteEndPoint;
+				IsConnect = true;
+			}
+
+			StartReceive(socket);
+		}
+
+		public void Close() => Close(Client);
+
+		private void Close(Socket socket)
+		{
+			if (socket == null) return;
+
+			EndPoint endPoint;
+			bool wasConnected;
+			lock (_connectionGate)
+			{
+				if (!ReferenceEquals(_client, socket)) return;
+
+				endPoint = RemoteEndPoint;
+				wasConnected = IsConnect;
+				IsConnect = false;
+				Volatile.Write(ref _client, null);
+			}
 
 			try
 			{
-				var socket = Client;
-				var endPoint = RemoteEndPoint;
-				var wasConnected = IsConnect;
-				IsConnect = false;
-				Client = null;
-				if (socket == null) return;
-
-				try
+				using (socket)
 				{
-					using (socket)
-					{
-						if (wasConnected) socket.Shutdown(SocketShutdown.Both);
-					}
+					if (wasConnected) socket.Shutdown(SocketShutdown.Both);
 				}
-				catch (Exception exp)
-				{
-					_error.OnNext(new ErrorData("Close", exp));
-				}
-				finally
-				{
-					if (wasConnected) _closed.OnNext(endPoint);
-				}
+			}
+			catch (Exception exp)
+			{
+				_error.OnNext(new ErrorData("Close", exp));
 			}
 			finally
 			{
-				Volatile.Write(ref _closing, 0);
+				if (wasConnected) _closed.OnNext(endPoint);
 			}
 		}
 
@@ -172,75 +204,102 @@ namespace RxSocket
 		/// <summary>
 		/// Set KeepAlive with property values
 		/// </summary>
-		public void SetKeepAlive()
+		public void SetKeepAlive() => SetKeepAlive(Client);
+
+		private void SetKeepAlive(Socket socket)
 		{
 			var inputParams = new byte[12];
 			BitConverter.GetBytes(1).CopyTo(inputParams, 0);
 			BitConverter.GetBytes(KeepAliveTime).CopyTo(inputParams, 4);
 			BitConverter.GetBytes(KeepAliveInterval).CopyTo(inputParams, 8);
-			Client?.IOControl(IOControlCode.KeepAliveValues, inputParams, null);
+			socket?.IOControl(IOControlCode.KeepAliveValues, inputParams, null);
 		}
 
-		internal void StartReceive()
+		internal void StartReceive(Socket socket)
 		{
-			var socket = Client;
-			if (socket == null) return;
+			ReceiveState state;
+			lock (_connectionGate)
+			{
+				if (!ReferenceEquals(_client, socket) || !IsConnect) return;
+
+				state = new ReceiveState(socket, LocalEndPoint, RemoteEndPoint);
+			}
+
+			StartReceive(state);
+		}
+
+		private void StartReceive(ReceiveState state)
+		{
+			if (!ReferenceEquals(Client, state.Socket)) return;
 
 			var buffer = new byte[BufferSize];
+			state.Buffer = buffer;
 			try
 			{
-				socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ReceiveCallback, buffer);
+				state.Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ReceiveCallback, state);
 			}
 			catch (Exception exp)
 			{
-				if (!ReferenceEquals(socket, Client)) return;
-				try
-				{
-					_error.OnNext(new ErrorData("BeginReceive", exp));
-				}
-				finally
-				{
-					Close();
-				}
+				ReceiveFailed(state.Socket, "BeginReceive", exp);
 			}
 		}
 
 		private void ReceiveCallback(IAsyncResult result)
 		{
-			var socket = Client;
-			if (Volatile.Read(ref _closing) != 0 || socket == null) return;
-
+			var state = (ReceiveState)result.AsyncState;
 			int length;
 			try
 			{
-				length = socket.EndReceive(result);
+				length = state.Socket.EndReceive(result);
 			}
 			catch (Exception exp)
 			{
-				if (!ReferenceEquals(socket, Client)) return;
-				try
-				{
-					_error.OnNext(new ErrorData("EndReceive", exp));
-				}
-				finally
-				{
-					Close();
-				}
+				ReceiveFailed(state.Socket, "EndReceive", exp);
 				return;
 			}
 
-			if (length <= 0)    // Socket Closed
+			if (!ReferenceEquals(Client, state.Socket)) return;
+
+			if (length == 0)
 			{
-				Close();
+				Close(state.Socket);
 				return;
 			}
 
-			var buffer = (byte[])result.AsyncState;
 			var data = new byte[length];
-			Array.Copy(buffer, data, data.Length);
-			this._received.OnNext(new TcpData(this, data, LocalEndPoint, RemoteEndPoint));
+			Array.Copy(state.Buffer, data, length);
+			_received.OnNext(new TcpData(this, data, state.LocalEndPoint, state.RemoteEndPoint));
 
-			StartReceive();
+			StartReceive(state);
+		}
+
+		private void ReceiveFailed(Socket socket, string method, Exception exception)
+		{
+			if (!ReferenceEquals(Client, socket)) return;
+
+			try
+			{
+				_error.OnNext(new ErrorData(method, exception));
+			}
+			finally
+			{
+				Close(socket);
+			}
+		}
+
+		private sealed class ReceiveState
+		{
+			public ReceiveState(Socket socket, EndPoint localEndPoint, EndPoint remoteEndPoint)
+			{
+				Socket = socket;
+				LocalEndPoint = localEndPoint;
+				RemoteEndPoint = remoteEndPoint;
+			}
+
+			public Socket Socket { get; }
+			public EndPoint LocalEndPoint { get; }
+			public EndPoint RemoteEndPoint { get; }
+			public byte[] Buffer { get; set; }
 		}
 	}
 }

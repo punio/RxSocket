@@ -180,7 +180,7 @@ namespace RxSocket
 				if (!IsListening(session) || !client.IsConnect) return;
 
 				_accepted.OnNext(client);
-				if (ReferenceEquals(client.Client, socket)) client.StartReceive();
+				client.StartReceive(socket);
 				keepClient = true;
 			}
 			catch (Exception exp)
