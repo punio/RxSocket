@@ -58,10 +58,9 @@ namespace RxSocket
 		{
 			if (Server != null) Close();
 
-			IPAddress address;
-			if (!IPAddress.TryParse(localAddress, out address))
+			if (!IPAddress.TryParse(localAddress, out var address))
 			{
-				var hostEntry = Dns.GetHostEntry(address);
+				var hostEntry = Dns.GetHostEntry(localAddress);
 				if ((hostEntry.AddressList?.Length ?? 0) <= 0) throw new Exception("Invalid Address");
 				address = hostEntry.AddressList[0];
 			}

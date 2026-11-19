@@ -11,9 +11,17 @@ namespace TestApp
 	{
 		static void Main(string[] args)
 		{
+			var _listener = new RxUdpListener();
+			_listener.LocalAddress = IPAddress.Parse("192.168.1.100");
+			_listener.Listen("239.192.0.1", "192.168.1.100", 60001);
+			_listener.Received.Subscribe(d => Console.WriteLine("Receive :" + d.Data.Length));
+			Console.ReadKey();
+
+
 			var multicast1 = new RxUdpListener();
 			multicast1.LocalAddress = IPAddress.Parse("192.168.1.100");
-			multicast1.Listen("239.192.0.4", "192.168.1.100", 60004);
+			multicast1.Listen("239.192.0.1", "192.168.1.100", 60001);
+			multicast1.Received.Subscribe(d => Console.WriteLine("Receive :" + d.Data.Length));
 			var multicast2 = new RxUdpListener();
 			multicast2.LocalAddress = IPAddress.Parse("192.168.1.100");
 			multicast2.Listen("239.192.0.4", "192.168.1.100", 60004);
